@@ -1,3 +1,29 @@
 plugins {
-    id 'com.android.application' version '8.0.0' apply false
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.example.dnstt'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.example.dnstt"
+        minSdk 24
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+    }
+    
+    // IMPORTANT: This extracts the binary so we can execute it
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 }
