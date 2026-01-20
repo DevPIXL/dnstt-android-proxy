@@ -1,173 +1,97 @@
 package com.example.dnstt;
 
-import android.app.Activity;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.os.Bundle;
-import android.view.View;
-import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.IOException;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
 
+    private Process proxyProcess;
     private TextView logView;
-    private Button actionButton;
-    private ScrollView scrollView;
-    private Process dnsProcess;
-    private boolean isRunning = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // --- UI SETUP ---
-        LinearLayout mainLayout = new LinearLayout(this);
-        mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setPadding(30, 30, 30, 30);
+        // Simple Layout Programmatically (to avoid needing XML layout files)
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(50, 50, 50, 50);
 
-        // 1. Button Container (Horizontal)
-        LinearLayout buttonLayout = new LinearLayout(this);
-        buttonLayout.setOrientation(LinearLayout.HORIZONTAL);
+        EditText domainInput = new EditText(this);
+        domainInput.setHint("Domain (e.g. t.mamadoo.shop)");
+        domainInput.setText("t.mamadoo.shop"); // Default
+
+        EditText keyInput = new EditText(this);
+        keyInput.setHint("Paste Public Key Here");
         
-        // Start Button
-        actionButton = new Button(this);
-        actionButton.setText("START");
-        actionButton.setOnClickListener(v -> toggleProcess());
-        // improved layout params to share space
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
-        actionButton.setLayoutParams(btnParams);
-        buttonLayout.addView(actionButton);
+        Button btnStart = new Button(this);
+        btnStart.setText("Start Tunnel (1080)");
 
-        // Copy Log Button (NEW)
-        Button copyButton = new Button(this);
-        copyButton.setText("COPY LOGS");
-        copyButton.setOnClickListener(v -> copyLogsToClipboard());
-        copyButton.setLayoutParams(btnParams);
-        buttonLayout.addView(copyButton);
-
-        mainLayout.addView(buttonLayout);
-
-        // 2. Log Window
-        scrollView = new ScrollView(this);
         logView = new TextView(this);
-        logView.setText("--- Ready ---\n");
-        logView.setTextSize(12);
-        // Monospace font makes logs easier to read
-        logView.setTypeface(android.graphics.Typeface.MONOSPACE);
-        
-        scrollView.addView(logView);
-        mainLayout.addView(scrollView);
+        logView.setText("Logs will appear here...");
 
-        setContentView(mainLayout);
-        
-        // Keep screen awake
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        layout.addView(domainInput);
+        layout.addView(keyInput);
+        layout.addView(btnStart);
+        layout.addView(logView);
+        setContentView(layout);
+
+        btnStart.setOnClickListener(v -> {
+            if (proxyProcess != null) {
+                proxyProcess.destroy();
+                proxyProcess = null;
+            }
+            startTunnel(domainInput.getText().toString(), keyInput.getText().toString());
+        });
     }
 
-    // --- BUTTON ACTIONS ---
-
-    private void copyLogsToClipboard() {
-        String logs = logView.getText().toString();
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        ClipData clip = ClipData.newPlainText("DNSTT Logs", logs);
-        clipboard.setPrimaryClip(clip);
-        Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show();
-    }
-
-    private void toggleProcess() {
-        if (isRunning) {
-            if (dnsProcess != null) dnsProcess.destroy();
-            isRunning = false;
-            actionButton.setText("START");
-            log("\n--- Stopped by user ---");
-        } else {
-            startDnstt();
-        }
-    }
-
-    // --- PROCESS LOGIC ---
-
-    private void startDnstt() {
-        logView.setText(""); // Clear old logs
-        log("Initializing...");
-        actionButton.setEnabled(false);
-        
+    private void startTunnel(String domain, String pubKeyContent) {
         new Thread(() -> {
             try {
-                // A. Setup Binary
-                File binFile = new File(getFilesDir(), "dnstt-client");
-                if (!binFile.exists()) copyAsset("dnstt-client", binFile, true);
+                // 1. Write the Key to a temporary file
+                File keyFile = new File(getCacheDir(), "pub.key");
+                FileOutputStream fos = new FileOutputStream(keyFile);
+                fos.write(pubKeyContent.getBytes());
+                fos.close();
 
-                // B. Setup Key
-                File keyFile = new File(getFilesDir(), "pub.key");
-                if (!keyFile.exists()) copyAsset("pub.key", keyFile, false);
-
-                // C. Build Command
+                // 2. Locate the Binary (libdnstt.so)
+                String binaryPath = getApplicationInfo().nativeLibraryDir + "/libdnstt.so";
+                
+                // 3. Build Command
+                // ./dnstt-client -udp 8.8.8.8:53 -pubkey-file [FILE] [DOMAIN] 127.0.0.1:1080
                 String[] cmd = {
-                    binFile.getAbsolutePath(),
+                    binaryPath,
                     "-udp", "8.8.8.8:53",
                     "-pubkey-file", keyFile.getAbsolutePath(),
-                    "t.mamadoo.shop",
+                    domain,
                     "127.0.0.1:1080"
                 };
 
-                // D. Run
+                // 4. Run
                 ProcessBuilder pb = new ProcessBuilder(cmd);
-                pb.redirectErrorStream(true); // Crucial: merges Errors into the main log
-                dnsProcess = pb.start();
-                isRunning = true;
+                pb.redirectErrorStream(true);
+                proxyProcess = pb.start();
 
-                runOnUiThread(() -> {
-                    actionButton.setText("STOP");
-                    actionButton.setEnabled(true);
-                    log(">>> RUNNING (Port 1080) <<<");
-                });
+                runOnUiThread(() -> logView.setText("Starting..."));
 
-                // E. Read Output Loop
-                BufferedReader reader = new BufferedReader(new InputStreamReader(dnsProcess.getInputStream()));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(proxyProcess.getInputStream()));
                 String line;
                 while ((line = reader.readLine()) != null) {
                     String finalLine = line;
-                    runOnUiThread(() -> log(finalLine));
+                    runOnUiThread(() -> logView.append("\n" + finalLine));
                 }
 
             } catch (Exception e) {
-                runOnUiThread(() -> {
-                    log("\nCRITICAL ERROR: " + e.getMessage());
-                    e.printStackTrace(); // Print full error to internal logcat just in case
-                    actionButton.setEnabled(true);
-                });
+                runOnUiThread(() -> logView.setText("Error: " + e.getMessage()));
             }
         }).start();
-    }
-
-    // --- HELPERS ---
-
-    private void copyAsset(String name, File dest, boolean executable) throws IOException {
-        try (InputStream in = getAssets().open(name);
-             FileOutputStream out = new FileOutputStream(dest)) {
-            byte[] buffer = new byte[1024];
-            int read;
-            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
-        }
-        if (executable) dest.setExecutable(true);
-    }
-
-    private void log(String text) {
-        logView.append(text + "\n");
-        // Auto-scroll to bottom
-        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
     }
 }
