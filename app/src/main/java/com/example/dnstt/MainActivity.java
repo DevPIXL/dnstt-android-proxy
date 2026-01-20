@@ -1,12 +1,17 @@
 package com.example.dnstt;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -26,52 +31,90 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Simple UI Setup
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(30, 30, 30, 30);
+        // --- UI SETUP ---
+        LinearLayout mainLayout = new LinearLayout(this);
+        mainLayout.setOrientation(LinearLayout.VERTICAL);
+        mainLayout.setPadding(30, 30, 30, 30);
 
+        // 1. Button Container (Horizontal)
+        LinearLayout buttonLayout = new LinearLayout(this);
+        buttonLayout.setOrientation(LinearLayout.HORIZONTAL);
+        
+        // Start Button
         actionButton = new Button(this);
-        actionButton.setText("START DNSTT");
+        actionButton.setText("START");
         actionButton.setOnClickListener(v -> toggleProcess());
-        layout.addView(actionButton);
+        // improved layout params to share space
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
+        actionButton.setLayoutParams(btnParams);
+        buttonLayout.addView(actionButton);
 
+        // Copy Log Button (NEW)
+        Button copyButton = new Button(this);
+        copyButton.setText("COPY LOGS");
+        copyButton.setOnClickListener(v -> copyLogsToClipboard());
+        copyButton.setLayoutParams(btnParams);
+        buttonLayout.addView(copyButton);
+
+        mainLayout.addView(buttonLayout);
+
+        // 2. Log Window
         scrollView = new ScrollView(this);
         logView = new TextView(this);
-        logView.setText("Ready. Press Start.\n");
-        logView.setTextSize(14);
+        logView.setText("--- Ready ---\n");
+        logView.setTextSize(12);
+        // Monospace font makes logs easier to read
+        logView.setTypeface(android.graphics.Typeface.MONOSPACE);
+        
         scrollView.addView(logView);
-        layout.addView(scrollView);
+        mainLayout.addView(scrollView);
 
-        setContentView(layout);
+        setContentView(mainLayout);
+        
+        // Keep screen awake
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    // --- BUTTON ACTIONS ---
+
+    private void copyLogsToClipboard() {
+        String logs = logView.getText().toString();
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("DNSTT Logs", logs);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show();
     }
 
     private void toggleProcess() {
         if (isRunning) {
             if (dnsProcess != null) dnsProcess.destroy();
             isRunning = false;
-            actionButton.setText("START DNSTT");
-            log("Stopped.");
+            actionButton.setText("START");
+            log("\n--- Stopped by user ---");
         } else {
             startDnstt();
         }
     }
 
+    // --- PROCESS LOGIC ---
+
     private void startDnstt() {
+        logView.setText(""); // Clear old logs
         log("Initializing...");
         actionButton.setEnabled(false);
         
         new Thread(() -> {
             try {
-                // 1. Setup Binary
+                // A. Setup Binary
                 File binFile = new File(getFilesDir(), "dnstt-client");
                 if (!binFile.exists()) copyAsset("dnstt-client", binFile, true);
 
-                // 2. Setup Key
+                // B. Setup Key
                 File keyFile = new File(getFilesDir(), "pub.key");
                 if (!keyFile.exists()) copyAsset("pub.key", keyFile, false);
 
-                // 3. Build Command
+                // C. Build Command
                 String[] cmd = {
                     binFile.getAbsolutePath(),
                     "-udp", "8.8.8.8:53",
@@ -80,19 +123,19 @@ public class MainActivity extends Activity {
                     "127.0.0.1:1080"
                 };
 
-                // 4. Run
+                // D. Run
                 ProcessBuilder pb = new ProcessBuilder(cmd);
-                pb.redirectErrorStream(true);
+                pb.redirectErrorStream(true); // Crucial: merges Errors into the main log
                 dnsProcess = pb.start();
                 isRunning = true;
 
                 runOnUiThread(() -> {
                     actionButton.setText("STOP");
                     actionButton.setEnabled(true);
-                    log(">>> RUNNING <<<");
+                    log(">>> RUNNING (Port 1080) <<<");
                 });
 
-                // 5. Log Loop
+                // E. Read Output Loop
                 BufferedReader reader = new BufferedReader(new InputStreamReader(dnsProcess.getInputStream()));
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -102,12 +145,15 @@ public class MainActivity extends Activity {
 
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    log("Error: " + e.getMessage());
+                    log("\nCRITICAL ERROR: " + e.getMessage());
+                    e.printStackTrace(); // Print full error to internal logcat just in case
                     actionButton.setEnabled(true);
                 });
             }
         }).start();
     }
+
+    // --- HELPERS ---
 
     private void copyAsset(String name, File dest, boolean executable) throws IOException {
         try (InputStream in = getAssets().open(name);
@@ -121,6 +167,7 @@ public class MainActivity extends Activity {
 
     private void log(String text) {
         logView.append(text + "\n");
+        // Auto-scroll to bottom
         scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
     }
 }
