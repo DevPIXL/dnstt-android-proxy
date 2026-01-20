@@ -1,4 +1,4 @@
-name: Build DNSTT App
+name: Fix and Build DNSTT App
 
 on: [push, workflow_dispatch]
 
@@ -8,23 +8,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 1. SETUP: Create the correct build files programmatically
-      # This fixes the "Plugin not found" and "Version missing" errors by forcing a clean config.
-      - name: Generate Build Files
+      # 1. SETUP: Generate correct build files and clean Manifest
+      - name: Generate Config Files
         run: |
-          # Create settings.gradle with correct plugin repositories
+          # Create settings.gradle
           echo "pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }" > settings.gradle
           echo "dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }" >> settings.gradle
           echo "rootProject.name = 'DNSTT Runner'" >> settings.gradle
           echo "include ':app'" >> settings.gradle
 
-          # Delete root build.gradle if it exists (it conflicts with the app one)
-          rm -f build.gradle
-
-          # Ensure app directory exists
+          # Create app/build.gradle (AGP 8.2.0)
           mkdir -p app
-
-          # Create app/build.gradle with the specified version
           echo "plugins { id 'com.android.application' version '8.2.0' }" > app/build.gradle
           echo "android {" >> app/build.gradle
           echo "    namespace 'com.example.dnstt'" >> app/build.gradle
@@ -36,6 +30,7 @@ jobs:
           echo "        versionCode 1" >> app/build.gradle
           echo "        versionName '1.0'" >> app/build.gradle
           echo "    }" >> app/build.gradle
+          # This line forces the native library to be extracted (replacing the Manifest attribute)
           echo "    packagingOptions { jniLibs { useLegacyPackaging = true } }" >> app/build.gradle
           echo "}" >> app/build.gradle
           echo "dependencies {" >> app/build.gradle
@@ -43,34 +38,15 @@ jobs:
           echo "    implementation 'com.google.android.material:material:1.9.0'" >> app/build.gradle
           echo "}" >> app/build.gradle
 
-      # 2. CORE: Build the DNSTT Binary (ARM64)
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-      
-      - name: Build DNSTT Binary
-        run: |
-          git clone https://www.bamsoftware.com/git/dnstt.git
-          cd dnstt/dnstt-client
-          GOOS=android GOARCH=arm64 go build -o libdnstt.so
-          # Move to the folder structure Android expects
-          mkdir -p ../../app/src/main/jniLibs/arm64-v8a/
-          mv libdnstt.so ../../app/src/main/jniLibs/arm64-v8a/
-
-      # 3. BUILD: Compile the APK
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Build with Gradle
-        run: gradle assembleDebug
-
-      # 4. FINISH: Upload the APK
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: dnstt-app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          # Overwrite Manifest to remove the conflicting 'extractNativeLibs' attribute
+          mkdir -p app/src/main
+          echo '<?xml version="1.0" encoding="utf-8"?>' > app/src/main/AndroidManifest.xml
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' >> app/src/main/AndroidManifest.xml
+          echo '    <uses-permission android:name="android.permission.INTERNET" />' >> app/src/main/AndroidManifest.xml
+          echo '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />' >> app/src/main/AndroidManifest.xml
+          echo '    <application' >> app/src/main/AndroidManifest.xml
+          echo '        android:icon="@mipmap/ic_launcher"' >> app/src/main/AndroidManifest.xml
+          echo '        android:label="DNSTT Runner">' >> app/src/main/AndroidManifest.xml
+          echo '        <activity android:name=".MainActivity" android:exported="true">' >> app/src/main/AndroidManifest.xml
+          echo '            <intent-filter>' >> app/src/main/AndroidManifest.xml
+          echo '                <action android:name="android.intent.action.MAIN" />' >> app
