@@ -4,14 +4,21 @@ plugins {
 
 android {
     namespace 'com.example.dnstt'
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.example.dnstt"
         minSdk 24
-        targetSdk 33
+        targetSdk 34
         versionCode 1
         versionName "1.0"
+    }
+
+    // This allows the app to load the .so file directly from the APK
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
