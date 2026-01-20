@@ -1,31 +1,46 @@
-name: Build APK
+name: Build DNSTT Android App
 
 on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v3
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      # 1. Build the DNSTT Binary (ARM64)
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+      
+      - name: Build DNSTT Binary
+        run: |
+          git clone https://www.bamsoftware.com/git/dnstt.git
+          cd dnstt/dnstt-client
+          # Build for Android ARM64
+          GOOS=android GOARCH=arm64 go build -o libdnstt.so
+          # Move to the folder structure Android expects
+          mkdir -p ../../app/src/main/jniLibs/arm64-v8a/
+          mv libdnstt.so ../../app/src/main/jniLibs/arm64-v8a/
 
-    # THIS IS THE FIX: We force Gradle 8.5
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.5'
+      # 2. Build the Android APK
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-    - name: Build with Gradle
-      run: gradle assembleDebug
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: dnstt-launcher
-        path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
+
+      # 3. Upload the APK
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dnstt-app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
