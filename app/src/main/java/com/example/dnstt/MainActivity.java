@@ -19,7 +19,6 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView logScrollView;
     private Button btnStart;
     
-    // Listen for logs and status updates FROM the Service
     private final BroadcastReceiver logReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -36,7 +35,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // --- UI Setup ---
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 50, 50, 50);
@@ -49,11 +47,11 @@ public class MainActivity extends AppCompatActivity {
         keyInput.setHint("Paste Public Key Here");
         
         btnStart = new Button(this);
-        // Initial check: Is the service ALREADY running?
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
 
         logView = new TextView(this);
-        logView.setText("Logs:\n" + ProxyService.lastLog);
+        // Load the full history from the Service buffer
+        logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
         
         logScrollView = new ScrollView(this);
@@ -69,16 +67,18 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(layout);
 
-        // --- Button Logic (Remote Control) ---
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             
             if (ProxyService.isRunning) {
-                // Send STOP command to the Service
+                // Optimistic UI Update: Change text immediately
+                btnStart.setText("Start Tunnel"); 
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
-                // Send START command with data to the Service
+                // Optimistic UI Update: Change text immediately
+                btnStart.setText("Stop Tunnel");
+                
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 
@@ -87,7 +87,6 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     startService(serviceIntent);
                 }
-                btnStart.setText("Stop Tunnel");
             }
         });
     }
@@ -95,7 +94,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Start listening to the Service when app is open
         IntentFilter filter = new IntentFilter();
         filter.addAction("com.example.dnstt.LOG_UPDATE");
         filter.addAction("com.example.dnstt.STATUS_UPDATE");
@@ -106,19 +104,21 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
         
+        // Refresh state in case it changed while paused
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
+        logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
+        logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Stop listening when app is minimized (Service keeps running in background)
         unregisterReceiver(logReceiver);
     }
 
     private void log(String message) {
         if (message == null) return;
-        logView.append("\n" + message);
+        logView.append(message + "\n"); // Append new line
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
 }
