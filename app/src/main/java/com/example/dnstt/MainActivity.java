@@ -8,9 +8,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -53,9 +53,6 @@ public class MainActivity extends AppCompatActivity {
             this.domain = domain;
             this.key = key;
         }
-
-        @Override
-        public String toString() { return name; } // Used by ListView
     }
 
     private final BroadcastReceiver logReceiver = new BroadcastReceiver() {
@@ -74,26 +71,34 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Get dynamic theme colors (Fixes Dark Mode & "Empty" List)
+        int colorBackground = getThemeColor(android.R.attr.windowBackground);
+        int colorForeground = getThemeColor(android.R.attr.textColorPrimary);
+        int colorSurface = getThemeColor(android.R.attr.colorBackground); // For Toolbar
+
         // --- Root Layout: DrawerLayout ---
         drawerLayout = new DrawerLayout(this);
         
-        // --- Main Content (The UI you see) ---
+        // --- Main Content ---
         LinearLayout mainContent = new LinearLayout(this);
         mainContent.setOrientation(LinearLayout.VERTICAL);
         mainContent.setLayoutParams(new DrawerLayout.LayoutParams(
                 DrawerLayout.LayoutParams.MATCH_PARENT, 
                 DrawerLayout.LayoutParams.MATCH_PARENT));
 
-        // 1. Custom Toolbar
+        // 1. Toolbar (Now adapts to theme)
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setBackgroundColor(Color.parseColor("#EEEEEE")); // Light Gray Header
+        toolbar.setBackgroundColor(colorSurface); 
         toolbar.setPadding(20, 20, 20, 20);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        // Add a small elevation shadow
+        toolbar.setElevation(10f);
 
         ImageButton btnMenu = new ImageButton(this);
         btnMenu.setImageResource(R.drawable.ic_menu);
-        btnMenu.setBackgroundColor(Color.TRANSPARENT);
+        btnMenu.setBackgroundColor(0); // Transparent
+        btnMenu.setColorFilter(colorForeground); // Adapt Icon Color
         btnMenu.setOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
         TextView title = new TextView(this);
@@ -101,28 +106,26 @@ public class MainActivity extends AppCompatActivity {
         title.setTextSize(18);
         title.setPadding(30, 0, 0, 0);
         title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(colorForeground); // Adapt Text Color
 
         ImageButton btnOptions = new ImageButton(this);
-        btnOptions.setImageResource(R.drawable.ic_add); // Using 'Plus' icon for options
-        btnOptions.setBackgroundColor(Color.TRANSPARENT);
-        btnOptions.setColorFilter(Color.BLACK); // Tint black
-        btnMenu.setColorFilter(Color.BLACK);    // Tint black
+        btnOptions.setImageResource(R.drawable.ic_add);
+        btnOptions.setBackgroundColor(0);
+        btnOptions.setColorFilter(colorForeground); // Adapt Icon Color
         btnOptions.setOnClickListener(this::showOptionsMenu);
 
         toolbar.addView(btnMenu);
         toolbar.addView(title);
         toolbar.addView(btnOptions);
 
-        // 2. Inputs & Logs
+        // 2. Body
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(50, 50, 50, 50);
 
         domainInput = new EditText(this);
         domainInput.setHint("Domain (e.g. t.example.com)");
-        // REMOVED HARDCODED TEXT
-
+        
         keyInput = new EditText(this);
         keyInput.setHint("Paste Public Key Here");
         
@@ -132,6 +135,7 @@ public class MainActivity extends AppCompatActivity {
         logView = new TextView(this);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
+        logView.setTextColor(colorForeground);
         
         logScrollView = new ScrollView(this);
         logScrollView.addView(logView);
@@ -147,12 +151,17 @@ public class MainActivity extends AppCompatActivity {
         mainContent.addView(toolbar);
         mainContent.addView(body);
 
-        // --- Drawer Content (The Config List) ---
+        // --- Drawer Content (Saved Configs) ---
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
-        drawerContainer.setBackgroundColor(Color.WHITE);
+        drawerContainer.setBackgroundColor(colorBackground); // Fixes White Background in Dark Mode
+        
+        // FIX CLICK-THROUGH: Make the drawer consume touches
+        drawerContainer.setClickable(true);
+        drawerContainer.setFocusable(true);
+        
         DrawerLayout.LayoutParams drawerParams = new DrawerLayout.LayoutParams(
-                600, // Width in pixels (approx 200dp)
+                700, // Slightly wider drawer
                 DrawerLayout.LayoutParams.MATCH_PARENT);
         drawerParams.gravity = Gravity.START;
         drawerContainer.setLayoutParams(drawerParams);
@@ -161,8 +170,8 @@ public class MainActivity extends AppCompatActivity {
         TextView drawerTitle = new TextView(this);
         drawerTitle.setText("Saved Configs");
         drawerTitle.setTextSize(20);
-        drawerTitle.setPadding(0, 0, 0, 30);
-        drawerTitle.setTextColor(Color.BLACK);
+        drawerTitle.setPadding(20, 0, 0, 30);
+        drawerTitle.setTextColor(colorForeground);
 
         configListView = new ListView(this);
         configAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
@@ -173,7 +182,6 @@ public class MainActivity extends AppCompatActivity {
             drawerLayout.closeDrawers();
         });
         
-        // Long press to delete
         configListView.setOnItemLongClickListener((parent, view, position, id) -> {
             confirmDeleteConfig(position);
             return true;
@@ -182,13 +190,12 @@ public class MainActivity extends AppCompatActivity {
         drawerContainer.addView(drawerTitle);
         drawerContainer.addView(configListView);
 
-        // --- Assemble Root ---
+        // --- Assemble ---
         drawerLayout.addView(mainContent);
         drawerLayout.addView(drawerContainer);
 
         setContentView(drawerLayout);
 
-        // --- Logic ---
         loadConfigsFromStorage();
 
         btnStart.setOnClickListener(v -> {
@@ -211,7 +218,14 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- Options Menu (Plus Icon) ---
+    // Helper to get system colors dynamically
+    private int getThemeColor(int attribute) {
+        TypedValue value = new TypedValue();
+        getTheme().resolveAttribute(attribute, value, true);
+        return value.data;
+    }
+
+    // --- Options Menu ---
     private void showOptionsMenu(View v) {
         PopupMenu popup = new PopupMenu(this, v);
         popup.getMenu().add("Save Current Config");
@@ -233,7 +247,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // --- Config Logic ---
-
     private void promptSaveConfig() {
         final EditText nameInput = new EditText(this);
         nameInput.setHint("Config Name");
@@ -283,8 +296,7 @@ public class MainActivity extends AppCompatActivity {
         configAdapter.notifyDataSetChanged();
     }
 
-    // --- Storage (SharedPreferences + JSON) ---
-
+    // --- Storage ---
     private void saveConfigsToStorage() {
         try {
             JSONArray arr = new JSONArray();
@@ -319,7 +331,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // --- Clipboard ---
-
     private void exportToClipboard() {
         try {
             JSONObject obj = new JSONObject();
