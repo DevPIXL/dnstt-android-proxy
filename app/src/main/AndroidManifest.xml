@@ -9,7 +9,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_app_icon"
         android:label="DNSTT Runner"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
         
         <activity
             android:name=".MainActivity"
