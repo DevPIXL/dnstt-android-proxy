@@ -19,7 +19,7 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView logScrollView;
     private Button btnStart;
     
-    // Listen for logs and status updates from the Service
+    // Listen for logs and status updates FROM the Service
     private final BroadcastReceiver logReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -49,11 +49,10 @@ public class MainActivity extends AppCompatActivity {
         keyInput.setHint("Paste Public Key Here");
         
         btnStart = new Button(this);
-        // Check if service is already running to set button text correctly
+        // Initial check: Is the service ALREADY running?
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
 
         logView = new TextView(this);
-        // Restore logs if service was already running
         logView.setText("Logs:\n" + ProxyService.lastLog);
         logView.setTextIsSelectable(true);
         
@@ -70,16 +69,16 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(layout);
 
-        // --- Button Logic ---
+        // --- Button Logic (Remote Control) ---
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             
             if (ProxyService.isRunning) {
-                // If running, send STOP command
+                // Send STOP command to the Service
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
-                // If stopped, send START command with data
+                // Send START command with data to the Service
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 
@@ -96,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Register receiver to get updates while screen is on
+        // Start listening to the Service when app is open
         IntentFilter filter = new IntentFilter();
         filter.addAction("com.example.dnstt.LOG_UPDATE");
         filter.addAction("com.example.dnstt.STATUS_UPDATE");
@@ -107,14 +106,13 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
         
-        // Sync button state
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Unregister to save battery when app is minimized (Service keeps running)
+        // Stop listening when app is minimized (Service keeps running in background)
         unregisterReceiver(logReceiver);
     }
 
