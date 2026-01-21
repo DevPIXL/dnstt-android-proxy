@@ -8,9 +8,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.graphics.Color;
+import android.graphics.PorterDuff;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -71,12 +73,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Get dynamic theme colors (Fixes Dark Mode & "Empty" List)
-        int colorBackground = getThemeColor(android.R.attr.windowBackground);
-        int colorForeground = getThemeColor(android.R.attr.textColorPrimary);
-        int colorSurface = getThemeColor(android.R.attr.colorBackground); // For Toolbar
+        // --- COLOR LOGIC (Guaranteed High Contrast) ---
+        boolean isDark = isDarkMode();
+        int colorBg = isDark ? Color.BLACK : Color.WHITE;
+        int colorText = isDark ? Color.WHITE : Color.BLACK;
+        int colorSurface = isDark ? Color.parseColor("#202020") : Color.parseColor("#EEEEEE"); // Slightly different for header
 
-        // --- Root Layout: DrawerLayout ---
+        // --- Root Layout ---
         drawerLayout = new DrawerLayout(this);
         
         // --- Main Content ---
@@ -85,33 +88,33 @@ public class MainActivity extends AppCompatActivity {
         mainContent.setLayoutParams(new DrawerLayout.LayoutParams(
                 DrawerLayout.LayoutParams.MATCH_PARENT, 
                 DrawerLayout.LayoutParams.MATCH_PARENT));
+        mainContent.setBackgroundColor(colorBg); // Set main background
 
-        // 1. Toolbar (Now adapts to theme)
+        // 1. Toolbar
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setBackgroundColor(colorSurface); 
-        toolbar.setPadding(20, 20, 20, 20);
+        toolbar.setPadding(30, 30, 30, 30);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        // Add a small elevation shadow
-        toolbar.setElevation(10f);
+        toolbar.setElevation(8f);
 
         ImageButton btnMenu = new ImageButton(this);
         btnMenu.setImageResource(R.drawable.ic_menu);
         btnMenu.setBackgroundColor(0); // Transparent
-        btnMenu.setColorFilter(colorForeground); // Adapt Icon Color
+        btnMenu.setColorFilter(colorText, PorterDuff.Mode.SRC_IN); // Force Icon Color
         btnMenu.setOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
         TextView title = new TextView(this);
         title.setText("DNSTT Runner");
-        title.setTextSize(18);
-        title.setPadding(30, 0, 0, 0);
+        title.setTextSize(20);
+        title.setPadding(40, 0, 0, 0);
         title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        title.setTextColor(colorForeground); // Adapt Text Color
+        title.setTextColor(colorText); // Force Text Color
 
         ImageButton btnOptions = new ImageButton(this);
         btnOptions.setImageResource(R.drawable.ic_add);
         btnOptions.setBackgroundColor(0);
-        btnOptions.setColorFilter(colorForeground); // Adapt Icon Color
+        btnOptions.setColorFilter(colorText, PorterDuff.Mode.SRC_IN); // Force Icon Color
         btnOptions.setOnClickListener(this::showOptionsMenu);
 
         toolbar.addView(btnMenu);
@@ -124,10 +127,16 @@ public class MainActivity extends AppCompatActivity {
         body.setPadding(50, 50, 50, 50);
 
         domainInput = new EditText(this);
+        domainInput.setId(View.generateViewId()); // <--- FIX BUG #3: Adding ID saves text on theme switch
         domainInput.setHint("Domain (e.g. t.example.com)");
+        domainInput.setTextColor(colorText);
+        domainInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
         
         keyInput = new EditText(this);
+        keyInput.setId(View.generateViewId()); // <--- FIX BUG #3
         keyInput.setHint("Paste Public Key Here");
+        keyInput.setTextColor(colorText);
+        keyInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
         
         btnStart = new Button(this);
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
@@ -135,9 +144,10 @@ public class MainActivity extends AppCompatActivity {
         logView = new TextView(this);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
-        logView.setTextColor(colorForeground);
+        logView.setTextColor(colorText); // Force Log Text Color
         
         logScrollView = new ScrollView(this);
+        logScrollView.setId(View.generateViewId()); // Save scroll position
         logScrollView.addView(logView);
         
         body.addView(domainInput);
@@ -154,27 +164,35 @@ public class MainActivity extends AppCompatActivity {
         // --- Drawer Content (Saved Configs) ---
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
-        drawerContainer.setBackgroundColor(colorBackground); // Fixes White Background in Dark Mode
+        drawerContainer.setBackgroundColor(colorBg); // Match main background
         
-        // FIX CLICK-THROUGH: Make the drawer consume touches
         drawerContainer.setClickable(true);
         drawerContainer.setFocusable(true);
         
         DrawerLayout.LayoutParams drawerParams = new DrawerLayout.LayoutParams(
-                700, // Slightly wider drawer
+                750, 
                 DrawerLayout.LayoutParams.MATCH_PARENT);
         drawerParams.gravity = Gravity.START;
         drawerContainer.setLayoutParams(drawerParams);
-        drawerContainer.setPadding(20, 50, 20, 20);
+        drawerContainer.setPadding(40, 60, 40, 40);
 
         TextView drawerTitle = new TextView(this);
         drawerTitle.setText("Saved Configs");
-        drawerTitle.setTextSize(20);
-        drawerTitle.setPadding(20, 0, 0, 30);
-        drawerTitle.setTextColor(colorForeground);
+        drawerTitle.setTextSize(22);
+        drawerTitle.setPadding(0, 0, 0, 40);
+        drawerTitle.setTextColor(colorText); 
 
         configListView = new ListView(this);
-        configAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
+        configAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, new ArrayList<>()) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                // Force list items to have correct text color
+                View view = super.getView(position, convertView, parent);
+                TextView text = (TextView) view.findViewById(android.R.id.text1);
+                text.setTextColor(colorText);
+                return view;
+            }
+        };
         configListView.setAdapter(configAdapter);
         
         configListView.setOnItemClickListener((parent, view, position, id) -> {
@@ -218,11 +236,10 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Helper to get system colors dynamically
-    private int getThemeColor(int attribute) {
-        TypedValue value = new TypedValue();
-        getTheme().resolveAttribute(attribute, value, true);
-        return value.data;
+    // Helper: Detect Dark Mode Reliable
+    private boolean isDarkMode() {
+        int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
     }
 
     // --- Options Menu ---
