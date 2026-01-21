@@ -18,7 +18,8 @@ public class ProxyService extends Service {
 
     private Process proxyProcess;
     public static boolean isRunning = false;
-    public static String lastLog = "";
+    // We'll keep a small buffer of logs so they appear when you reopen the app
+    public static StringBuilder logBuffer = new StringBuilder();
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -30,14 +31,12 @@ public class ProxyService extends Service {
             return START_NOT_STICKY;
         }
 
-        // 1. Start Foreground Notification (Required to keep net access)
+        // 1. Start Foreground Notification immediately
         startForeground(1, createNotification("Tunnel Starting..."));
 
-        // 2. Get args
         String domain = intent.getStringExtra("domain");
         String key = intent.getStringExtra("key");
         
-        // 3. Start the Binary
         startTunnel(domain, key);
 
         return START_STICKY;
@@ -46,20 +45,21 @@ public class ProxyService extends Service {
     private void startTunnel(String domain, String pubKeyContent) {
         if (isRunning) return;
         isRunning = true;
+        
+        // Broadcast "STARTED" status immediately so button updates
+        broadcastStatus(true);
+        logToUI("Service: Starting tunnel for " + domain + "...");
 
         new Thread(() -> {
             try {
-                // Update Notification
                 NotificationManager nm = getSystemService(NotificationManager.class);
-                nm.notify(1, createNotification("Tunnel Running: " + domain));
+                nm.notify(1, createNotification("Tunnel Connected: " + domain));
 
-                // Save Key File
                 File keyFile = new File(getCacheDir(), "pub.key");
                 FileOutputStream fos = new FileOutputStream(keyFile);
                 fos.write(pubKeyContent.getBytes());
                 fos.close();
 
-                // Build Command
                 String binaryPath = getApplicationInfo().nativeLibraryDir + "/libdnstt.so";
                 String[] cmd = {
                     binaryPath,
@@ -69,23 +69,18 @@ public class ProxyService extends Service {
                     "127.0.0.1:1080"
                 };
 
-                // Run Process
                 ProcessBuilder pb = new ProcessBuilder(cmd);
                 pb.redirectErrorStream(true);
                 proxyProcess = pb.start();
 
-                // Read Logs (and broadcast them to UI if open)
                 BufferedReader reader = new BufferedReader(new InputStreamReader(proxyProcess.getInputStream()));
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    lastLog = line;
-                    // Send log to MainActivity (if alive)
-                    Intent i = new Intent("com.example.dnstt.LOG_UPDATE");
-                    i.putExtra("log", line);
-                    sendBroadcast(i);
+                    logToUI(line);
                 }
 
             } catch (Exception e) {
+                logToUI("Error: " + e.getMessage());
                 e.printStackTrace();
             } finally {
                 stopTunnel();
@@ -102,8 +97,26 @@ public class ProxyService extends Service {
         stopForeground(true);
         stopSelf();
         
+        broadcastStatus(false);
+        logToUI("Service: Tunnel Stopped.");
+    }
+
+    private void broadcastStatus(boolean running) {
         Intent i = new Intent("com.example.dnstt.STATUS_UPDATE");
-        i.putExtra("running", false);
+        i.setPackage(getPackageName()); // Explicit broadcast for reliability
+        i.putExtra("running", running);
+        sendBroadcast(i);
+    }
+
+    private void logToUI(String message) {
+        // Append to static buffer
+        if (logBuffer.length() > 5000) logBuffer.setLength(0); // Prevent overflow
+        logBuffer.append(message).append("\n");
+
+        // Broadcast to Activity
+        Intent i = new Intent("com.example.dnstt.LOG_UPDATE");
+        i.setPackage(getPackageName()); // Explicit broadcast for reliability
+        i.putExtra("log", message);
         sendBroadcast(i);
     }
 
@@ -120,7 +133,7 @@ public class ProxyService extends Service {
         return new NotificationCompat.Builder(this, channelId)
                 .setContentTitle("DNSTT Proxy")
                 .setContentText(text)
-                .setSmallIcon(android.R.drawable.sym_def_app_icon)
+                .setSmallIcon(R.drawable.ic_app_icon) // Use our new icon
                 .setContentIntent(pi)
                 .build();
     }
