@@ -6,7 +6,7 @@
 <br>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DevPIXL/dnstt-android-proxy/docs/icon.svg" alt="DNSTT Android Proxy Logo" width="150" />
+  <img src="docs/icon.svg" alt="DNSTT Android Proxy Logo" alt="DNSTT Android Proxy Logo" width="150" />
 </p>
 
 <h1 align="center">DNSTT Android Proxy</h1>
@@ -60,6 +60,14 @@
 ## 🤝 مشارکت
 
 ما از مشارکت شما استقبال می‌کنیم! لطفاً درخواست پول (Pull Request) دهید یا اگر مشکلی پیدا کردید Issue باز کنید.
+
+
+## 🙏 تشکر و قدردانی
+
+تشکر ویژه از پروژه‌های زیر که ساخت این برنامه را ممکن کردند:
+
+* **[dnstt.network](https://dnstt.network)**: برای ابزار اصلی تانلینگ DNS و منابع آن.
+* **[dnstt-deploy](https://github.com/bugfloyd/dnstt-deploy)**: برای اسکریپت‌های عالی دیپلوی و حمایت از جامعه کاربری.
 
 </div>
 

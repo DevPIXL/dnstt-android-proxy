@@ -6,7 +6,7 @@
 <br>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DevPIXL/dnstt-android-proxy/docs/icon.svg" alt="DNSTT Android Proxy Logo" width="150" />
+  <img src="docs/icon.svg" alt="DNSTT Android Proxy Logo" alt="DNSTT Android Proxy Logo" width="150" />
 </p>
 
 <h1 align="center">DNSTT Android Proxy</h1>
@@ -61,6 +61,14 @@ If you want to build the APK from source:
 We welcome contributions! Please feel free to submit a Pull Request or open an Issue.
 
 ---
+
+## 👏 Acknowledgments
+
+Special thanks to the following projects for making this possible:
+
+* **[dnstt.network](https://dnstt.network)**: For the core DNS Tunneling Tool concept and resources.
+* **[dnstt-deploy](https://github.com/bugfloyd/dnstt-deploy)**: For the excellent deployment scripts and community support.
+
 <div align="center">
 Made with ❤️ by DevPIXL
 </div>
