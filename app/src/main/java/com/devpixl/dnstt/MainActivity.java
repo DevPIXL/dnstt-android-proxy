@@ -30,6 +30,7 @@ import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.core.content.ContextCompat; // [NEW] Import for color handling
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -112,10 +113,9 @@ public class MainActivity extends AppCompatActivity {
             getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_menu);
         }
 
-        // 2. Body Container (Holds Inputs, Spacer, Logs, Button, Status)
+        // 2. Body Container
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        // Use weight sum to ensure layout distribution
         body.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -142,14 +142,13 @@ public class MainActivity extends AppCompatActivity {
 
         body.addView(inputsContainer);
 
-        // --- Spacer (Push Button to bottom) ---
-        // This view takes up all available space between inputs and bottom area
+        // --- Spacer ---
         View spacer = new View(this);
         spacer.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
         body.addView(spacer);
 
-        // --- Logs Section (Hidden by default) ---
+        // --- Logs Section ---
         logView = new TextView(this);
         logView.setText("Logs:\n");
         logView.setTextIsSelectable(true);
@@ -158,38 +157,37 @@ public class MainActivity extends AppCompatActivity {
         logScrollView = new ScrollView(this);
         logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
-        logScrollView.setBackgroundColor(0xFFEEEEEE); // Light gray background for contrast
+        logScrollView.setBackgroundColor(0xFFEEEEEE);
 
-        // Default GONE. Fixed height when visible so it doesn't push button off screen completely
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 400); // Fixed height 400px
+                ViewGroup.LayoutParams.MATCH_PARENT, 400);
         logParams.setMargins(20, 0, 20, 20);
         logScrollView.setLayoutParams(logParams);
         logScrollView.setVisibility(View.GONE);
 
         body.addView(logScrollView);
 
-        // --- Bottom Area (Connect Button + Status Bar) ---
+        // --- Bottom Area ---
         LinearLayout bottomArea = new LinearLayout(this);
         bottomArea.setOrientation(LinearLayout.VERTICAL);
         bottomArea.setGravity(Gravity.CENTER_HORIZONTAL);
         bottomArea.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Circular Connect Button
+        // Connect Button
         btnStart = new ImageButton(this);
-        btnStart.setImageResource(R.drawable.ic_app_icon); // Uses your blue icon
-        btnStart.setBackgroundColor(Color.TRANSPARENT); // Remove button background
+        btnStart.setImageResource(R.drawable.ic_app_icon);
+        btnStart.setBackgroundColor(Color.TRANSPARENT);
         btnStart.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-        int btnSize = 250; // Size in pixels
+        int btnSize = 250;
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(btnSize, btnSize);
-        btnParams.setMargins(0, 0, 0, 40); // Space above status bar
+        btnParams.setMargins(0, 0, 0, 40);
         btnStart.setLayoutParams(btnParams);
 
         bottomArea.addView(btnStart);
 
-        // Status Bar (Blue Bar)
+        // Status Bar
         statusView = new TextView(this);
         statusView.setText("Ready");
         statusView.setTextColor(Color.WHITE);
@@ -198,10 +196,8 @@ public class MainActivity extends AppCompatActivity {
         statusView.setPadding(0, 30, 0, 30);
         statusView.setTextSize(16);
 
-        // [FIX 1] Use R.attr.colorPrimary instead of com.google.android.material.R.attr.colorPrimary
-        TypedValue typedValue = new TypedValue();
-        getTheme().resolveAttribute(R.attr.colorPrimary, typedValue, true);
-        statusView.setBackgroundColor(typedValue.data);
+        // Use standard Color Resource directly to avoid attribute errors
+        statusView.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_blue));
 
         statusView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -215,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // Use Material 3 Surface Color (This one is fine in Material R)
+        TypedValue typedValue = new TypedValue();
         getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true);
         drawerContainer.setBackgroundColor(typedValue.data);
 
@@ -257,24 +253,20 @@ public class MainActivity extends AppCompatActivity {
 
         loadConfigsFromStorage();
 
-        // Start Button Click Logic
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             if (ProxyService.isRunning) {
-                // Stop
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
-                // Start
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 serviceIntent.putExtra("dns", dnsInput.getText().toString());
 
-                // [LOGIC] Reset Status Logic on Start
                 isTestingPhase = true;
                 logBatchCount = 0;
                 streamLogCount = 0;
-                statusView.setText("Testing..."); // Initial Phase Text
+                statusView.setText("Testing...");
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
@@ -287,25 +279,22 @@ public class MainActivity extends AppCompatActivity {
         updateStartButtonState(ProxyService.isRunning);
     }
 
-    // Status Bar Logic
     private void updateStatusLogic(String message) {
         if (!ProxyService.isRunning) {
             statusView.setText("Ready");
             return;
         }
 
-        // Phase 1: Initiation
         if (isTestingPhase) {
             statusView.setText("Testing...");
             if (message.contains("begin session")) {
-                isTestingPhase = false; // Move to Phase 2
+                isTestingPhase = false;
                 logBatchCount = 0;
                 streamLogCount = 0;
             }
             return;
         }
 
-        // Phase 2: Monitoring (Batch of 5 logs)
         logBatchCount++;
 
         if (message.contains("begin stream") || message.contains("end stream")) {
@@ -313,14 +302,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (logBatchCount >= 5) {
-            // Check logic
             if (streamLogCount >= 3) {
                 statusView.setText("Connected");
             } else {
                 statusView.setText("Timed-out");
             }
-
-            // Reset for next batch
             logBatchCount = 0;
             streamLogCount = 0;
         }
@@ -367,7 +353,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void showConfigOptionsMenu(View view, int position) {
         PopupMenu popup = new PopupMenu(this, view);
-        // [FIX 2] Use correct file name: config_item_menu
         getMenuInflater().inflate(R.menu.config_item_menu, popup.getMenu());
         popup.setOnMenuItemClickListener(item -> {
             int itemId = item.getItemId();
@@ -387,12 +372,10 @@ public class MainActivity extends AppCompatActivity {
         TextInputLayout layout = new TextInputLayout(this);
         layout.setHint(hint);
         layout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
-
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, 0, 0, 30);
         layout.setLayoutParams(params);
-
         TextInputEditText editText = new TextInputEditText(layout.getContext());
         layout.addView(editText);
         return layout;
@@ -401,19 +384,13 @@ public class MainActivity extends AppCompatActivity {
     private void promptSaveConfig() {
         final EditText nameInput = new EditText(this);
         nameInput.setHint("Config Name");
-
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Save Config")
                 .setView(nameInput)
                 .setPositiveButton("Save", (dialog, which) -> {
                     String name = nameInput.getText().toString();
                     if (!name.isEmpty()) {
-                        saveConfig(new Config(
-                            name,
-                            domainInput.getText().toString(),
-                            keyInput.getText().toString(),
-                            dnsInput.getText().toString()
-                        ));
+                        saveConfig(new Config(name, domainInput.getText().toString(), keyInput.getText().toString(), dnsInput.getText().toString()));
                     }
                 })
                 .setNegativeButton("Cancel", null)
@@ -528,24 +505,19 @@ public class MainActivity extends AppCompatActivity {
             if (clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount() > 0) {
                 String json = clipboard.getPrimaryClip().getItemAt(0).getText().toString();
                 JSONObject obj = new JSONObject(json);
-
                 String domain = obj.getString("domain");
                 String key = obj.getString("key");
                 String dns = obj.has("dns") ? obj.getString("dns") : "8.8.8.8:53";
-
                 domainInput.setText(domain);
                 keyInput.setText(key);
                 dnsInput.setText(dns);
-
                 String name;
                 if (obj.has("name") && !obj.getString("name").trim().isEmpty()) {
                     name = obj.getString("name");
                 } else {
                     name = "Imported Config " + (configList.size() + 1);
                 }
-
                 saveConfig(new Config(name, domain, key, dns));
-
             } else {
                 Toast.makeText(this, "Clipboard empty", Toast.LENGTH_SHORT).show();
             }
