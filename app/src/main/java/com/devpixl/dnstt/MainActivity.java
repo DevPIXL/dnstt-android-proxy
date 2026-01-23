@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable; // [NEW] Needed for outline
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -180,24 +181,42 @@ public class MainActivity extends AppCompatActivity {
         // Connect Button
         btnStart = new ImageButton(this);
         btnStart.setImageResource(R.drawable.ic_app_icon);
-        btnStart.setBackgroundColor(Color.TRANSPARENT);
         btnStart.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-        int btnSize = 250;
+        // [DESIGN FIX 2] Create Outline Drawable that matches App Background
+        GradientDrawable buttonBg = new GradientDrawable();
+        buttonBg.setShape(GradientDrawable.OVAL);
+        buttonBg.setColor(Color.TRANSPARENT); // Fill
+
+        // Resolve the Window Background color (handles Light/Dark mode)
+        TypedValue bgTypedValue = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.colorBackground, bgTypedValue, true);
+        int backgroundColor = bgTypedValue.data;
+
+        // Set Stroke (The Outline)
+        buttonBg.setStroke(20, backgroundColor); // 20px thickness for visibility
+
+        btnStart.setBackground(buttonBg);
+        btnStart.setPadding(20, 20, 20, 20); // Padding pushes icon in so outline is visible
+        btnStart.setElevation(20f); // [DESIGN FIX] Ensure button sits ON TOP of ribbon
+
+        int btnSize = 280; // Slightly larger to look good
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(btnSize, btnSize);
-        btnParams.setMargins(0, 0, 0, 40);
+        // [DESIGN FIX 1] Negative margin pulls the ribbon UP to collide
+        btnParams.setMargins(0, 0, 0, -100);
         btnStart.setLayoutParams(btnParams);
 
         bottomArea.addView(btnStart);
 
-        // Status Bar
+        // Status Bar (Ribbon)
         statusView = new TextView(this);
         statusView.setText("Disconnected");
         statusView.setTextColor(Color.WHITE);
         statusView.setTypeface(null, Typeface.BOLD);
         statusView.setGravity(Gravity.CENTER);
-        statusView.setPadding(0, 30, 0, 30);
-        statusView.setTextSize(16);
+        // [DESIGN FIX] Extra Top Padding (120) so text isn't covered by the overlapping button
+        statusView.setPadding(0, 120, 0, 40);
+        statusView.setTextSize(18); // Slightly larger text
 
         statusView.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_blue));
 
@@ -281,7 +300,6 @@ public class MainActivity extends AppCompatActivity {
         updateStartButtonState(ProxyService.isRunning);
     }
 
-    // [FIX] Status Logic: Applies 3-stream success check to ALL phases
     private void updateStatusLogic(String message) {
         if (!ProxyService.isRunning) {
             statusView.setText("Disconnected");
@@ -295,21 +313,16 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Logic 1: Early Success (Fast Update)
-        // If we see 3 streams, we are Connected. We don't wait for the batch of 5.
-        // This applies to the initial Testing phase AND steady state.
         if (streamLogCount >= 3) {
             statusView.setText("Connected");
-            // Reset for next batch monitoring
             logBatchCount = 0;
             streamLogCount = 0;
             return;
         }
 
-        // Logic 2: Batch Completion (Failure/Timeout Check)
-        // If we reached 5 logs and STILL haven't seen 3 streams, it's a timeout.
+        // Logic 2: Batch Completion
         if (logBatchCount >= 5) {
             if (streamLogCount >= 3) {
-                // Safety net, though Logic 1 catches this usually
                 statusView.setText("Connected");
             } else {
                 statusView.setText("Timed-out");
@@ -557,11 +570,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void log(String message) {
         if (message == null) return;
-
-        // We still append text so the history is there when you open it later
         logView.append(message + "\n");
-
-        // [OPTIMIZATION] Only scroll if the view is actually visible
         if (isLogsVisible) {
             logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
         }
