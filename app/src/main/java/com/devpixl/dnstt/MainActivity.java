@@ -30,7 +30,7 @@ import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
-import androidx.core.content.ContextCompat; // [NEW] Import for color handling
+import androidx.core.content.ContextCompat;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -56,7 +56,6 @@ public class MainActivity extends AppCompatActivity {
 
     // Status Logic Variables
     private boolean isLogsVisible = false;
-    private boolean isTestingPhase = false;
     private int logBatchCount = 0;
     private int streamLogCount = 0;
 
@@ -157,7 +156,11 @@ public class MainActivity extends AppCompatActivity {
         logScrollView = new ScrollView(this);
         logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
-        logScrollView.setBackgroundColor(0xFFEEEEEE);
+
+        // Use Theme Attribute for Background (Dark Mode Compatible)
+        TypedValue logBgValue = new TypedValue();
+        getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurfaceVariant, logBgValue, true);
+        logScrollView.setBackgroundColor(logBgValue.data);
 
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 400);
@@ -189,14 +192,13 @@ public class MainActivity extends AppCompatActivity {
 
         // Status Bar
         statusView = new TextView(this);
-        statusView.setText("Ready");
+        statusView.setText("Disconnected");
         statusView.setTextColor(Color.WHITE);
         statusView.setTypeface(null, Typeface.BOLD);
         statusView.setGravity(Gravity.CENTER);
         statusView.setPadding(0, 30, 0, 30);
         statusView.setTextSize(16);
 
-        // Use standard Color Resource directly to avoid attribute errors
         statusView.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_blue));
 
         statusView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -263,10 +265,10 @@ public class MainActivity extends AppCompatActivity {
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 serviceIntent.putExtra("dns", dnsInput.getText().toString());
 
-                isTestingPhase = true;
+                // Reset Logic Variables on Start
                 logBatchCount = 0;
                 streamLogCount = 0;
-                statusView.setText("Testing...");
+                statusView.setText("Testing..."); // Initial State
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
@@ -279,19 +281,10 @@ public class MainActivity extends AppCompatActivity {
         updateStartButtonState(ProxyService.isRunning);
     }
 
+    // [FIX] Status Logic: Applies 3-stream success check to ALL phases
     private void updateStatusLogic(String message) {
         if (!ProxyService.isRunning) {
-            statusView.setText("Ready");
-            return;
-        }
-
-        if (isTestingPhase) {
-            statusView.setText("Testing...");
-            if (message.contains("begin session")) {
-                isTestingPhase = false;
-                logBatchCount = 0;
-                streamLogCount = 0;
-            }
+            statusView.setText("Disconnected");
             return;
         }
 
@@ -301,8 +294,22 @@ public class MainActivity extends AppCompatActivity {
             streamLogCount++;
         }
 
+        // Logic 1: Early Success (Fast Update)
+        // If we see 3 streams, we are Connected. We don't wait for the batch of 5.
+        // This applies to the initial Testing phase AND steady state.
+        if (streamLogCount >= 3) {
+            statusView.setText("Connected");
+            // Reset for next batch monitoring
+            logBatchCount = 0;
+            streamLogCount = 0;
+            return;
+        }
+
+        // Logic 2: Batch Completion (Failure/Timeout Check)
+        // If we reached 5 logs and STILL haven't seen 3 streams, it's a timeout.
         if (logBatchCount >= 5) {
             if (streamLogCount >= 3) {
+                // Safety net, though Logic 1 catches this usually
                 statusView.setText("Connected");
             } else {
                 statusView.setText("Timed-out");
@@ -314,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateStartButtonState(boolean isRunning) {
         if (!isRunning) {
-            statusView.setText("Ready");
+            statusView.setText("Disconnected");
         }
     }
 
