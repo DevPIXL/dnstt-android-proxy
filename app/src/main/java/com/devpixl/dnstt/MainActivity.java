@@ -1,6 +1,5 @@
 package com.devpixl.dnstt;
 
-import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -8,26 +7,29 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
-import android.graphics.Color;
-import android.graphics.PorterDuff;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
+
+// [CHANGE] Material Imports
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
@@ -37,20 +39,18 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView logView;
     private ScrollView logScrollView;
-    private Button btnStart;
-    // [CHANGE] Added dnsInput
-    private EditText domainInput, keyInput, dnsInput;
+    private MaterialButton btnStart; // [CHANGE] MaterialButton
+    private TextInputEditText domainInput, keyInput, dnsInput; // [CHANGE] TextInputEditText
     private DrawerLayout drawerLayout;
     private ListView configListView;
     private ArrayAdapter<String> configAdapter;
     private List<Config> configList = new ArrayList<>();
 
-    // Internal Config Class
     private static class Config {
         String name;
         String domain;
         String key;
-        String dns; // [CHANGE] Added dns field
+        String dns;
 
         Config(String name, String domain, String key, String dns) {
             this.name = name;
@@ -76,13 +76,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // --- COLOR LOGIC (Guaranteed High Contrast) ---
-        boolean isDark = isDarkMode();
-        int colorBg = isDark ? Color.BLACK : Color.WHITE;
-        int colorText = isDark ? Color.WHITE : Color.BLACK;
-        int colorSurface = isDark ? Color.parseColor("#202020") : Color.parseColor("#EEEEEE");
+        // [CHANGE] Removed manual color/dark mode logic. Theme handles it.
 
-        // --- Root Layout ---
         drawerLayout = new DrawerLayout(this);
 
         // --- Main Content ---
@@ -91,93 +86,76 @@ public class MainActivity extends AppCompatActivity {
         mainContent.setLayoutParams(new DrawerLayout.LayoutParams(
                 DrawerLayout.LayoutParams.MATCH_PARENT,
                 DrawerLayout.LayoutParams.MATCH_PARENT));
-        mainContent.setBackgroundColor(colorBg);
 
-        // 1. Toolbar
-        LinearLayout toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setBackgroundColor(colorSurface);
-        toolbar.setPadding(30, 30, 30, 30);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        // 1. [CHANGE] Material Toolbar
+        MaterialToolbar toolbar = new MaterialToolbar(this);
+        toolbar.setTitle("DNSTT Runner");
         toolbar.setElevation(8f);
+        toolbar.setNavigationIcon(R.drawable.ic_menu);
+        toolbar.setNavigationOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
-        ImageButton btnMenu = new ImageButton(this);
-        btnMenu.setImageResource(R.drawable.ic_menu);
-        btnMenu.setBackgroundColor(0);
-        btnMenu.setColorFilter(colorText, PorterDuff.Mode.SRC_IN);
-        btnMenu.setOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
+        // Add "Add" button to menu programmatically
+        toolbar.getMenu().add("Save Config").setIcon(R.drawable.ic_add)
+                .setShowAsActionFlags(1) // SHOW_AS_ACTION_ALWAYS
+                .setOnMenuItemClickListener(item -> {
+                    showOptionsMenu(toolbar);
+                    return true;
+                });
 
-        TextView title = new TextView(this);
-        title.setText("DNSTT Runner");
-        title.setTextSize(20);
-        title.setPadding(40, 0, 0, 0);
-        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        title.setTextColor(colorText);
-
-        ImageButton btnOptions = new ImageButton(this);
-        btnOptions.setImageResource(R.drawable.ic_add);
-        btnOptions.setBackgroundColor(0);
-        btnOptions.setColorFilter(colorText, PorterDuff.Mode.SRC_IN);
-        btnOptions.setOnClickListener(this::showOptionsMenu);
-
-        toolbar.addView(btnMenu);
-        toolbar.addView(title);
-        toolbar.addView(btnOptions);
+        mainContent.addView(toolbar);
 
         // 2. Body
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(50, 50, 50, 50);
 
-        domainInput = new EditText(this);
-        domainInput.setId(View.generateViewId());
-        domainInput.setHint("Domain (e.g. t.example.com)");
-        domainInput.setTextColor(colorText);
-        domainInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
+        // [CHANGE] Helper to create outlined inputs
+        TextInputLayout domainLayout = createInputLayout("Domain (e.g. t.example.com)");
+        domainInput = (TextInputEditText) domainLayout.getEditText();
 
-        keyInput = new EditText(this);
-        keyInput.setId(View.generateViewId());
-        keyInput.setHint("Paste Public Key Here");
-        keyInput.setTextColor(colorText);
-        keyInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
+        TextInputLayout keyLayout = createInputLayout("Paste Public Key Here");
+        keyInput = (TextInputEditText) keyLayout.getEditText();
 
-        // [CHANGE] Initialize DNS input
-        dnsInput = new EditText(this);
-        dnsInput.setId(View.generateViewId());
-        dnsInput.setHint("UDP DNS (e.g. 8.8.8.8:53)");
-        dnsInput.setText("8.8.8.8:53"); // Set a default value
-        dnsInput.setTextColor(colorText);
-        dnsInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
+        TextInputLayout dnsLayout = createInputLayout("UDP DNS (e.g. 8.8.8.8:53)");
+        dnsInput = (TextInputEditText) dnsLayout.getEditText();
+        dnsInput.setText("8.8.8.8:53");
 
-        btnStart = new Button(this);
+        body.addView(domainLayout);
+        body.addView(keyLayout);
+        body.addView(dnsLayout);
+
+        // [CHANGE] Material Button
+        btnStart = new MaterialButton(this);
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
+        // Add spacing
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnParams.setMargins(0, 20, 0, 20);
+        btnStart.setLayoutParams(btnParams);
+
+        body.addView(btnStart);
 
         logView = new TextView(this);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
-        logView.setTextColor(colorText);
+        // Text color is handled automatically by theme (black in light, white in dark)
 
         logScrollView = new ScrollView(this);
         logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
 
-        body.addView(domainInput);
-        body.addView(keyInput);
-        body.addView(dnsInput); // [CHANGE] Add DNS input to layout
-        body.addView(btnStart);
         body.addView(logScrollView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
         ));
 
-        mainContent.addView(toolbar);
         mainContent.addView(body);
 
         // --- Drawer Content ---
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
-        drawerContainer.setBackgroundColor(colorBg);
-
+        drawerContainer.setBackgroundColor(getResources().getColor(android.R.color.background_light)); // Fallback, better to use theme attribute in XML
+        // Ideally, use NavigationView here, but sticking to LinearLayout for minimal changes:
         drawerContainer.setClickable(true);
         drawerContainer.setFocusable(true);
 
@@ -192,18 +170,9 @@ public class MainActivity extends AppCompatActivity {
         drawerTitle.setText("Saved Configs");
         drawerTitle.setTextSize(22);
         drawerTitle.setPadding(0, 0, 0, 40);
-        drawerTitle.setTextColor(colorText);
 
         configListView = new ListView(this);
-        configAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, new ArrayList<>()) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                TextView text = (TextView) view.findViewById(android.R.id.text1);
-                text.setTextColor(colorText);
-                return view;
-            }
-        };
+        configAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         configListView.setAdapter(configAdapter);
 
         configListView.setOnItemClickListener((parent, view, position, id) -> {
@@ -219,7 +188,6 @@ public class MainActivity extends AppCompatActivity {
         drawerContainer.addView(drawerTitle);
         drawerContainer.addView(configListView);
 
-        // --- Assemble ---
         drawerLayout.addView(mainContent);
         drawerLayout.addView(drawerContainer);
 
@@ -237,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
                 btnStart.setText("Stop Tunnel");
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
-                serviceIntent.putExtra("dns", dnsInput.getText().toString()); // [CHANGE] Pass DNS value
+                serviceIntent.putExtra("dns", dnsInput.getText().toString());
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
@@ -248,13 +216,26 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private boolean isDarkMode() {
-        int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
+    // [CHANGE] Helper method to create standard Material 3 Input fields
+    private TextInputLayout createInputLayout(String hint) {
+        TextInputLayout layout = new TextInputLayout(this);
+        layout.setHint(hint);
+        layout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 0, 0, 30);
+        layout.setLayoutParams(params);
+
+        TextInputEditText editText = new TextInputEditText(layout.getContext());
+        layout.addView(editText);
+        return layout;
     }
 
     private void showOptionsMenu(View v) {
-        PopupMenu popup = new PopupMenu(this, v);
+        // [CHANGE] Using MaterialAlertDialog for options as a quick replacement for PopupMenu logic
+        // or keep PopupMenu if preferred. Here is the PopupMenu logic adapted:
+        android.widget.PopupMenu popup = new android.widget.PopupMenu(this, v);
         popup.getMenu().add("Save Current Config");
         popup.getMenu().add("Import from Clipboard");
         popup.getMenu().add("Export to Clipboard");
@@ -277,13 +258,13 @@ public class MainActivity extends AppCompatActivity {
         final EditText nameInput = new EditText(this);
         nameInput.setHint("Config Name");
 
-        new AlertDialog.Builder(this)
+        // [CHANGE] MaterialAlertDialogBuilder
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("Save Config")
                 .setView(nameInput)
                 .setPositiveButton("Save", (dialog, which) -> {
                     String name = nameInput.getText().toString();
                     if (!name.isEmpty()) {
-                        // [CHANGE] Save dnsInput text
                         saveConfig(new Config(
                             name,
                             domainInput.getText().toString(),
@@ -304,7 +285,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void confirmDeleteConfig(int position) {
-        new AlertDialog.Builder(this)
+        // [CHANGE] MaterialAlertDialogBuilder
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("Delete Config?")
                 .setPositiveButton("Delete", (dialog, which) -> {
                     configList.remove(position);
@@ -318,7 +300,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadConfigToInputs(Config c) {
         domainInput.setText(c.domain);
         keyInput.setText(c.key);
-        dnsInput.setText(c.dns); // [CHANGE] Load DNS to input
+        dnsInput.setText(c.dns);
     }
 
     private void updateDrawerList() {
@@ -329,7 +311,6 @@ public class MainActivity extends AppCompatActivity {
         configAdapter.notifyDataSetChanged();
     }
 
-    // --- Storage ---
     private void saveConfigsToStorage() {
         try {
             JSONArray arr = new JSONArray();
@@ -338,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
                 obj.put("name", c.name);
                 obj.put("domain", c.domain);
                 obj.put("key", c.key);
-                obj.put("dns", c.dns); // [CHANGE] Store DNS in JSON
+                obj.put("dns", c.dns);
                 arr.put(obj);
             }
             SharedPreferences prefs = getSharedPreferences("dnstt_prefs", MODE_PRIVATE);
@@ -356,7 +337,6 @@ public class MainActivity extends AppCompatActivity {
             JSONArray arr = new JSONArray(jsonStr);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                // [CHANGE] Retrieve DNS from JSON (with fallback)
                 String dns = obj.has("dns") ? obj.getString("dns") : "8.8.8.8:53";
                 configList.add(new Config(obj.getString("name"), obj.getString("domain"), obj.getString("key"), dns));
             }
@@ -366,13 +346,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // --- Clipboard ---
     private void exportToClipboard() {
         try {
             JSONObject obj = new JSONObject();
             obj.put("domain", domainInput.getText().toString());
             obj.put("key", keyInput.getText().toString());
-            obj.put("dns", dnsInput.getText().toString()); // [CHANGE] Export DNS
+            obj.put("dns", dnsInput.getText().toString());
             String json = obj.toString();
 
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -392,7 +371,6 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject obj = new JSONObject(json);
                 domainInput.setText(obj.getString("domain"));
                 keyInput.setText(obj.getString("key"));
-                // [CHANGE] Import DNS if available
                 if(obj.has("dns")) {
                     dnsInput.setText(obj.getString("dns"));
                 }
@@ -405,7 +383,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ... (onResume, onPause, log, etc. remain the same)
     @Override
     protected void onResume() {
         super.onResume();

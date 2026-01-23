@@ -9,8 +9,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_app_icon"
         android:label="DNSTT Runner"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
-        
+        android:theme="@style/Theme.DNSTT">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -20,10 +19,10 @@
             </intent-filter>
         </activity>
 
-        <service 
-            android:name=".ProxyService" 
+        <service
+            android:name=".ProxyService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
-            
+
     </application>
 </manifest>
