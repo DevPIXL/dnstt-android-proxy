@@ -8,8 +8,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.PorterDuff; // [NEW] Needed for button tinting
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable; // [NEW] Needed for outline
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -30,6 +31,7 @@ import android.widget.Toast;
 import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar; // [NEW] Needed for layout params
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.core.content.ContextCompat;
 
@@ -57,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Status Logic Variables
     private boolean isLogsVisible = false;
+    private boolean isTestingPhase = false;
     private int logBatchCount = 0;
     private int streamLogCount = 0;
 
@@ -83,7 +86,9 @@ public class MainActivity extends AppCompatActivity {
                 updateStatusLogic(logMsg);
             } else if ("com.devpixl.dnstt.STATUS_UPDATE".equals(intent.getAction())) {
                 boolean running = intent.getBooleanExtra("running", false);
-                updateStartButtonState(running);
+                if (!running) {
+                    updateUIState("Disconnected");
+                }
             }
         }
     };
@@ -103,8 +108,25 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. Toolbar
         MaterialToolbar toolbar = new MaterialToolbar(this);
-        toolbar.setTitle("DNSTT Runner");
+        toolbar.setTitle(""); // [CHANGE] Clear default title
         toolbar.setElevation(8f);
+
+        // [CHANGE] Add Centered Title
+        TextView toolbarTitle = new TextView(this);
+        toolbarTitle.setText("DNSTT Runner");
+        toolbarTitle.setTextSize(20);
+        toolbarTitle.setTypeface(null, Typeface.BOLD);
+        // Use standard title appearance or default color (usually suitable for toolbar)
+        TypedValue titleColor = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.textColorPrimary, titleColor, true);
+        toolbarTitle.setTextColor(titleColor.data);
+
+        Toolbar.LayoutParams titleParams = new Toolbar.LayoutParams(
+                Toolbar.LayoutParams.WRAP_CONTENT, Toolbar.LayoutParams.WRAP_CONTENT);
+        titleParams.gravity = Gravity.CENTER;
+        toolbarTitle.setLayoutParams(titleParams);
+        toolbar.addView(toolbarTitle);
+
         mainContent.addView(toolbar);
         setSupportActionBar(toolbar);
 
@@ -158,7 +180,6 @@ public class MainActivity extends AppCompatActivity {
         logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
 
-        // Use Theme Attribute for Background (Dark Mode Compatible)
         TypedValue logBgValue = new TypedValue();
         getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurfaceVariant, logBgValue, true);
         logScrollView.setBackgroundColor(logBgValue.data);
@@ -183,42 +204,34 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setImageResource(R.drawable.ic_app_icon);
         btnStart.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-        // [DESIGN FIX 2] Create Outline Drawable that matches App Background
         GradientDrawable buttonBg = new GradientDrawable();
         buttonBg.setShape(GradientDrawable.OVAL);
-        buttonBg.setColor(Color.TRANSPARENT); // Fill
+        buttonBg.setColor(Color.TRANSPARENT);
 
-        // Resolve the Window Background color (handles Light/Dark mode)
         TypedValue bgTypedValue = new TypedValue();
         getTheme().resolveAttribute(android.R.attr.colorBackground, bgTypedValue, true);
         int backgroundColor = bgTypedValue.data;
 
-        // Set Stroke (The Outline)
-        buttonBg.setStroke(20, backgroundColor); // 20px thickness for visibility
+        buttonBg.setStroke(20, backgroundColor);
 
         btnStart.setBackground(buttonBg);
-        btnStart.setPadding(20, 20, 20, 20); // Padding pushes icon in so outline is visible
-        btnStart.setElevation(20f); // [DESIGN FIX] Ensure button sits ON TOP of ribbon
+        btnStart.setPadding(20, 20, 20, 20);
+        btnStart.setElevation(20f);
 
-        int btnSize = 280; // Slightly larger to look good
+        int btnSize = 280;
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(btnSize, btnSize);
-        // [DESIGN FIX 1] Negative margin pulls the ribbon UP to collide
         btnParams.setMargins(0, 0, 0, -100);
         btnStart.setLayoutParams(btnParams);
 
         bottomArea.addView(btnStart);
 
-        // Status Bar (Ribbon)
+        // Status Bar
         statusView = new TextView(this);
-        statusView.setText("Disconnected");
         statusView.setTextColor(Color.WHITE);
         statusView.setTypeface(null, Typeface.BOLD);
         statusView.setGravity(Gravity.CENTER);
-        // [DESIGN FIX] Extra Top Padding (120) so text isn't covered by the overlapping button
         statusView.setPadding(0, 120, 0, 40);
-        statusView.setTextSize(18); // Slightly larger text
-
-        statusView.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_blue));
+        statusView.setTextSize(18);
 
         statusView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -274,20 +287,25 @@ public class MainActivity extends AppCompatActivity {
 
         loadConfigsFromStorage();
 
+        // Initial State
+        updateUIState("Disconnected");
+
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             if (ProxyService.isRunning) {
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
+                // UI update handled by BroadcastReceiver
             } else {
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 serviceIntent.putExtra("dns", dnsInput.getText().toString());
 
                 // Reset Logic Variables on Start
+                isTestingPhase = true;
                 logBatchCount = 0;
                 streamLogCount = 0;
-                statusView.setText("Testing..."); // Initial State
+                updateUIState("Testing...");
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
@@ -297,35 +315,80 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        updateStartButtonState(ProxyService.isRunning);
+        if (ProxyService.isRunning) {
+            updateUIState("Testing..."); // Default restart state until logs confirm connection
+        }
+    }
+
+    // [CHANGE] Centralized UI State Manager for Colors and Text
+    private void updateUIState(String status) {
+        statusView.setText(status);
+
+        if ("Disconnected".equals(status)) {
+            // Gray State
+            statusView.setBackgroundColor(Color.GRAY);
+            btnStart.setColorFilter(Color.GRAY, PorterDuff.Mode.SRC_IN);
+        }
+        else if ("Timed-out".equals(status)) {
+            // Red State
+            statusView.setBackgroundColor(Color.RED);
+            btnStart.setColorFilter(Color.RED, PorterDuff.Mode.SRC_IN);
+        }
+        else {
+            // "Testing..." or "Connected" -> Blue State
+            int brandBlue = ContextCompat.getColor(this, R.color.brand_blue);
+            statusView.setBackgroundColor(brandBlue);
+            // Clear filter to show original Blue icon
+            btnStart.clearColorFilter();
+        }
     }
 
     private void updateStatusLogic(String message) {
         if (!ProxyService.isRunning) {
-            statusView.setText("Disconnected");
+            updateUIState("Disconnected");
+            return;
+        }
+
+        boolean isSessionStart = message.contains("begin session");
+        boolean isStreamLog = message.contains("begin stream") || message.contains("end stream");
+
+        if (isTestingPhase) {
+            // Ensure UI says Testing
+            if (!statusView.getText().equals("Testing...")) updateUIState("Testing...");
+
+            if (isSessionStart || isStreamLog) {
+                isTestingPhase = false;
+                logBatchCount = 0;
+                streamLogCount = 0;
+
+                if (isStreamLog) {
+                    logBatchCount = 1;
+                    streamLogCount = 1;
+                }
+            }
             return;
         }
 
         logBatchCount++;
 
-        if (message.contains("begin stream") || message.contains("end stream")) {
+        if (isStreamLog) {
             streamLogCount++;
         }
 
-        // Logic 1: Early Success (Fast Update)
+        // Fast Success Check
         if (streamLogCount >= 3) {
-            statusView.setText("Connected");
+            updateUIState("Connected");
             logBatchCount = 0;
             streamLogCount = 0;
             return;
         }
 
-        // Logic 2: Batch Completion
+        // Batch Failure Check
         if (logBatchCount >= 5) {
             if (streamLogCount >= 3) {
-                statusView.setText("Connected");
+                updateUIState("Connected");
             } else {
-                statusView.setText("Timed-out");
+                updateUIState("Timed-out");
             }
             logBatchCount = 0;
             streamLogCount = 0;
@@ -334,7 +397,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateStartButtonState(boolean isRunning) {
         if (!isRunning) {
-            statusView.setText("Disconnected");
+            updateUIState("Disconnected");
         }
     }
 
@@ -557,7 +620,19 @@ public class MainActivity extends AppCompatActivity {
         } else {
             registerReceiver(logReceiver, filter);
         }
-        updateStartButtonState(ProxyService.isRunning);
+
+        // Ensure UI matches service state on resume
+        if (ProxyService.isRunning) {
+            // We don't know exact status (Testing/Connected) without logs,
+            // but we can default to Testing or keep current if we persisted state.
+            // For simplicity, we just check if it was already updated.
+            if (statusView.getText().equals("Disconnected")) {
+                 updateUIState("Testing...");
+            }
+        } else {
+            updateUIState("Disconnected");
+        }
+
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
