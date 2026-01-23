@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,7 +24,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 
-// [CHANGE] Material Imports
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -39,8 +39,8 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView logView;
     private ScrollView logScrollView;
-    private MaterialButton btnStart; // [CHANGE] MaterialButton
-    private TextInputEditText domainInput, keyInput, dnsInput; // [CHANGE] TextInputEditText
+    private MaterialButton btnStart;
+    private TextInputEditText domainInput, keyInput, dnsInput;
     private DrawerLayout drawerLayout;
     private ListView configListView;
     private ArrayAdapter<String> configAdapter;
@@ -76,8 +76,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // [CHANGE] Removed manual color/dark mode logic. Theme handles it.
-
         drawerLayout = new DrawerLayout(this);
 
         // --- Main Content ---
@@ -87,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
                 DrawerLayout.LayoutParams.MATCH_PARENT,
                 DrawerLayout.LayoutParams.MATCH_PARENT));
 
-        // 1. [CHANGE] Material Toolbar
+        // 1. Toolbar
         MaterialToolbar toolbar = new MaterialToolbar(this);
         toolbar.setTitle("DNSTT Runner");
         toolbar.setElevation(8f);
@@ -109,7 +107,6 @@ public class MainActivity extends AppCompatActivity {
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(50, 50, 50, 50);
 
-        // [CHANGE] Helper to create outlined inputs
         TextInputLayout domainLayout = createInputLayout("Domain (e.g. t.example.com)");
         domainInput = (TextInputEditText) domainLayout.getEditText();
 
@@ -124,10 +121,9 @@ public class MainActivity extends AppCompatActivity {
         body.addView(keyLayout);
         body.addView(dnsLayout);
 
-        // [CHANGE] Material Button
         btnStart = new MaterialButton(this);
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
-        // Add spacing
+
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnParams.setMargins(0, 20, 0, 20);
@@ -138,7 +134,6 @@ public class MainActivity extends AppCompatActivity {
         logView = new TextView(this);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
-        // Text color is handled automatically by theme (black in light, white in dark)
 
         logScrollView = new ScrollView(this);
         logScrollView.setId(View.generateViewId());
@@ -154,8 +149,12 @@ public class MainActivity extends AppCompatActivity {
         // --- Drawer Content ---
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
-        drawerContainer.setBackgroundColor(getResources().getColor(android.R.color.background_light)); // Fallback, better to use theme attribute in XML
-        // Ideally, use NavigationView here, but sticking to LinearLayout for minimal changes:
+
+        // [FIX] Use Material 3 Surface Color (handles Dark Mode automatically)
+        TypedValue typedValue = new TypedValue();
+        getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true);
+        drawerContainer.setBackgroundColor(typedValue.data);
+
         drawerContainer.setClickable(true);
         drawerContainer.setFocusable(true);
 
@@ -216,7 +215,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // [CHANGE] Helper method to create standard Material 3 Input fields
     private TextInputLayout createInputLayout(String hint) {
         TextInputLayout layout = new TextInputLayout(this);
         layout.setHint(hint);
@@ -233,8 +231,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showOptionsMenu(View v) {
-        // [CHANGE] Using MaterialAlertDialog for options as a quick replacement for PopupMenu logic
-        // or keep PopupMenu if preferred. Here is the PopupMenu logic adapted:
         android.widget.PopupMenu popup = new android.widget.PopupMenu(this, v);
         popup.getMenu().add("Save Current Config");
         popup.getMenu().add("Import from Clipboard");
@@ -258,7 +254,6 @@ public class MainActivity extends AppCompatActivity {
         final EditText nameInput = new EditText(this);
         nameInput.setHint("Config Name");
 
-        // [CHANGE] MaterialAlertDialogBuilder
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Save Config")
                 .setView(nameInput)
@@ -285,7 +280,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void confirmDeleteConfig(int position) {
-        // [CHANGE] MaterialAlertDialogBuilder
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Delete Config?")
                 .setPositiveButton("Delete", (dialog, which) -> {
