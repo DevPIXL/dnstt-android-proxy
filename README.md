@@ -6,7 +6,7 @@
 <br>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DevPIXL/dnstt-android-proxy/main/app/src/main/res/drawable/ic_app_icon.xml" alt="DNSTT Android Proxy Logo" width="150" />
+  <img src="https://raw.githubusercontent.com/DevPIXL/dnstt-android-proxy/docs/icon.svg" alt="DNSTT Android Proxy Logo" width="150" />
 </p>
 
 <h1 align="center">DNSTT Android Proxy</h1>
