@@ -11,6 +11,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -92,15 +94,9 @@ public class MainActivity extends AppCompatActivity {
         toolbar.setNavigationIcon(R.drawable.ic_menu);
         toolbar.setNavigationOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
-        // Add "Add" button to menu programmatically
-        toolbar.getMenu().add("Save Config").setIcon(R.drawable.ic_add)
-                .setShowAsActionFlags(1) // SHOW_AS_ACTION_ALWAYS
-                .setOnMenuItemClickListener(item -> {
-                    showOptionsMenu(toolbar);
-                    return true;
-                });
-
         mainContent.addView(toolbar);
+        // [FIX] Set as Action Bar to enable standard menu handling
+        setSupportActionBar(toolbar);
 
         // 2. Body
         LinearLayout body = new LinearLayout(this);
@@ -150,7 +146,6 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // [FIX] Use Material 3 Surface Color (handles Dark Mode automatically)
         TypedValue typedValue = new TypedValue();
         getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true);
         drawerContainer.setBackgroundColor(typedValue.data);
@@ -215,6 +210,31 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // [FIX] Standard Menu Implementation
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+
+        if (id == R.id.action_save) {
+            promptSaveConfig();
+            return true;
+        } else if (id == R.id.action_import) {
+            importFromClipboard();
+            return true;
+        } else if (id == R.id.action_export) {
+            exportToClipboard();
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
     private TextInputLayout createInputLayout(String hint) {
         TextInputLayout layout = new TextInputLayout(this);
         layout.setHint(hint);
@@ -228,26 +248,6 @@ public class MainActivity extends AppCompatActivity {
         TextInputEditText editText = new TextInputEditText(layout.getContext());
         layout.addView(editText);
         return layout;
-    }
-
-    private void showOptionsMenu(View v) {
-        android.widget.PopupMenu popup = new android.widget.PopupMenu(this, v);
-        popup.getMenu().add("Save Current Config");
-        popup.getMenu().add("Import from Clipboard");
-        popup.getMenu().add("Export to Clipboard");
-
-        popup.setOnMenuItemClickListener(item -> {
-            String title = item.getTitle().toString();
-            if (title.equals("Save Current Config")) {
-                promptSaveConfig();
-            } else if (title.equals("Import from Clipboard")) {
-                importFromClipboard();
-            } else if (title.equals("Export to Clipboard")) {
-                exportToClipboard();
-            }
-            return true;
-        });
-        popup.show();
     }
 
     private void promptSaveConfig() {
