@@ -45,8 +45,8 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView logView;
     private ScrollView logScrollView;
-    private ImageButton btnStart; // [CHANGE] Changed to ImageButton for circular icon
-    private TextView statusView;  // [NEW] The blue bar at the bottom
+    private ImageButton btnStart;
+    private TextView statusView;
     private TextInputEditText domainInput, keyInput, dnsInput;
     private DrawerLayout drawerLayout;
     private ListView configListView;
@@ -79,7 +79,7 @@ public class MainActivity extends AppCompatActivity {
             if ("com.devpixl.dnstt.LOG_UPDATE".equals(intent.getAction())) {
                 String logMsg = intent.getStringExtra("log");
                 log(logMsg);
-                updateStatusLogic(logMsg); // [NEW] Run status logic
+                updateStatusLogic(logMsg);
             } else if ("com.devpixl.dnstt.STATUS_UPDATE".equals(intent.getAction())) {
                 boolean running = intent.getBooleanExtra("running", false);
                 updateStartButtonState(running);
@@ -165,7 +165,7 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 400); // Fixed height 400px
         logParams.setMargins(20, 0, 20, 20);
         logScrollView.setLayoutParams(logParams);
-        logScrollView.setVisibility(View.GONE); // [ACTION 1] Hide by default
+        logScrollView.setVisibility(View.GONE);
 
         body.addView(logScrollView);
 
@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
         bottomArea.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // [ACTION 2] Circular Connect Button
+        // Circular Connect Button
         btnStart = new ImageButton(this);
         btnStart.setImageResource(R.drawable.ic_app_icon); // Uses your blue icon
         btnStart.setBackgroundColor(Color.TRANSPARENT); // Remove button background
@@ -189,7 +189,7 @@ public class MainActivity extends AppCompatActivity {
 
         bottomArea.addView(btnStart);
 
-        // [ACTION 3] Status Bar (Blue Bar)
+        // Status Bar (Blue Bar)
         statusView = new TextView(this);
         statusView.setText("Ready");
         statusView.setTextColor(Color.WHITE);
@@ -198,9 +198,9 @@ public class MainActivity extends AppCompatActivity {
         statusView.setPadding(0, 30, 0, 30);
         statusView.setTextSize(16);
 
-        // Set background to Primary Color (Brand Blue)
+        // [FIX 1] Use R.attr.colorPrimary instead of com.google.android.material.R.attr.colorPrimary
         TypedValue typedValue = new TypedValue();
-        getTheme().resolveAttribute(com.google.android.material.R.attr.colorPrimary, typedValue, true);
+        getTheme().resolveAttribute(R.attr.colorPrimary, typedValue, true);
         statusView.setBackgroundColor(typedValue.data);
 
         statusView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -215,7 +215,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // Use Material 3 Surface Color
+        // Use Material 3 Surface Color (This one is fine in Material R)
         getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true);
         drawerContainer.setBackgroundColor(typedValue.data);
 
@@ -287,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
         updateStartButtonState(ProxyService.isRunning);
     }
 
-    // [ACTION 3] Status Bar Logic
+    // Status Bar Logic
     private void updateStatusLogic(String message) {
         if (!ProxyService.isRunning) {
             statusView.setText("Ready");
@@ -327,9 +327,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStartButtonState(boolean isRunning) {
-        // Visual feedback for button could be opacity change or icon change
-        // Since we use the app icon, maybe slightly dim it if running?
-        // For now, keeping it simple as per request.
         if (!isRunning) {
             statusView.setText("Ready");
         }
@@ -360,7 +357,6 @@ public class MainActivity extends AppCompatActivity {
             exportToClipboard();
             return true;
         } else if (id == R.id.action_toggle_logs) {
-            // [ACTION 1] Toggle Logs Visibility
             isLogsVisible = !isLogsVisible;
             logScrollView.setVisibility(isLogsVisible ? View.VISIBLE : View.GONE);
             return true;
@@ -369,11 +365,10 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    // ... [Rest of the helper methods remain unchanged] ...
-
     private void showConfigOptionsMenu(View view, int position) {
         PopupMenu popup = new PopupMenu(this, view);
-        getMenuInflater().inflate(R.menu.config_menu_item, popup.getMenu());
+        // [FIX 2] Use correct file name: config_item_menu
+        getMenuInflater().inflate(R.menu.config_item_menu, popup.getMenu());
         popup.setOnMenuItemClickListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.action_delete_config) {
