@@ -19,6 +19,7 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -91,12 +92,15 @@ public class MainActivity extends AppCompatActivity {
         MaterialToolbar toolbar = new MaterialToolbar(this);
         toolbar.setTitle("DNSTT Runner");
         toolbar.setElevation(8f);
-        toolbar.setNavigationIcon(R.drawable.ic_menu);
-        toolbar.setNavigationOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
         mainContent.addView(toolbar);
-        // [FIX] Set as Action Bar to enable standard menu handling
         setSupportActionBar(toolbar);
+
+        // Enable the Hamburger Menu icon
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_menu);
+        }
 
         // 2. Body
         LinearLayout body = new LinearLayout(this);
@@ -169,13 +173,15 @@ public class MainActivity extends AppCompatActivity {
         configAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         configListView.setAdapter(configAdapter);
 
+        // Click to Load
         configListView.setOnItemClickListener((parent, view, position, id) -> {
             loadConfigToInputs(configList.get(position));
             drawerLayout.closeDrawers();
         });
 
+        // Long Click to show Options Menu
         configListView.setOnItemLongClickListener((parent, view, position, id) -> {
-            confirmDeleteConfig(position);
+            showConfigOptionsMenu(view, position);
             return true;
         });
 
@@ -210,7 +216,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // [FIX] Standard Menu Implementation
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
@@ -220,6 +225,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
+
+        // Handle Hamburger Menu Click
+        if (id == android.R.id.home) {
+            drawerLayout.openDrawer(Gravity.LEFT);
+            return true;
+        }
 
         if (id == R.id.action_save) {
             promptSaveConfig();
@@ -233,6 +244,23 @@ public class MainActivity extends AppCompatActivity {
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    private void showConfigOptionsMenu(View view, int position) {
+        PopupMenu popup = new PopupMenu(this, view);
+        getMenuInflater().inflate(R.menu.config_item_menu, popup.getMenu());
+        popup.setOnMenuItemClickListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.action_delete_config) {
+                confirmDeleteConfig(position);
+                return true;
+            } else if (itemId == R.id.action_share_config) {
+                exportConfigToClipboard(configList.get(position));
+                return true;
+            }
+            return false;
+        });
+        popup.show();
     }
 
     private TextInputLayout createInputLayout(String hint) {
@@ -340,6 +368,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Exports inputs from UI (cannot export name as it's not on screen)
     private void exportToClipboard() {
         try {
             JSONObject obj = new JSONObject();
@@ -347,28 +376,62 @@ public class MainActivity extends AppCompatActivity {
             obj.put("key", keyInput.getText().toString());
             obj.put("dns", dnsInput.getText().toString());
             String json = obj.toString();
-
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            ClipData clip = ClipData.newPlainText("DNSTT Config", json);
-            clipboard.setPrimaryClip(clip);
-            Toast.makeText(this, "Copied to Clipboard", Toast.LENGTH_SHORT).show();
+            copyToClipboard(json);
         } catch (Exception e) {
             Toast.makeText(this, "Error exporting", Toast.LENGTH_SHORT).show();
         }
     }
 
+    // [CHANGE] Now includes "name" in export
+    private void exportConfigToClipboard(Config c) {
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("name", c.name); // Export name too
+            obj.put("domain", c.domain);
+            obj.put("key", c.key);
+            obj.put("dns", c.dns);
+            String json = obj.toString();
+            copyToClipboard(json);
+        } catch (Exception e) {
+            Toast.makeText(this, "Error exporting", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copyToClipboard(String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("DNSTT Config", text);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "Copied to Clipboard", Toast.LENGTH_SHORT).show();
+    }
+
+    // [CHANGE] Auto-saves imported config and reads "name"
     private void importFromClipboard() {
         try {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard.hasPrimaryClip()) {
+            if (clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount() > 0) {
                 String json = clipboard.getPrimaryClip().getItemAt(0).getText().toString();
                 JSONObject obj = new JSONObject(json);
-                domainInput.setText(obj.getString("domain"));
-                keyInput.setText(obj.getString("key"));
-                if(obj.has("dns")) {
-                    dnsInput.setText(obj.getString("dns"));
+
+                String domain = obj.getString("domain");
+                String key = obj.getString("key");
+                String dns = obj.has("dns") ? obj.getString("dns") : "8.8.8.8:53";
+
+                // Populate UI
+                domainInput.setText(domain);
+                keyInput.setText(key);
+                dnsInput.setText(dns);
+
+                // Determine Name
+                String name;
+                if (obj.has("name") && !obj.getString("name").trim().isEmpty()) {
+                    name = obj.getString("name");
+                } else {
+                    name = "Imported Config " + (configList.size() + 1);
                 }
-                Toast.makeText(this, "Imported!", Toast.LENGTH_SHORT).show();
+
+                // Auto-Save
+                saveConfig(new Config(name, domain, key, dns));
+
             } else {
                 Toast.makeText(this, "Clipboard empty", Toast.LENGTH_SHORT).show();
             }
