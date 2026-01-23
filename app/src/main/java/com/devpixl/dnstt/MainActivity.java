@@ -566,3 +566,4 @@ public class MainActivity extends AppCompatActivity {
             logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
         }
     }
+}
