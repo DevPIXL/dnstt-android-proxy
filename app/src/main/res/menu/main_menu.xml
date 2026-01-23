@@ -18,6 +18,10 @@
             <item
                 android:id="@+id/action_export"
                 android:title="Export to Clipboard" />
+
+            <item
+                android:id="@+id/action_toggle_logs"
+                android:title="Show/Hide Logs" />
             </menu>
         </item>
     </menu>

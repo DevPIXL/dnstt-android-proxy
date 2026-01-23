@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -17,18 +19,19 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.appbar.MaterialToolbar;
-import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
@@ -42,12 +45,19 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView logView;
     private ScrollView logScrollView;
-    private MaterialButton btnStart;
+    private ImageButton btnStart; // [CHANGE] Changed to ImageButton for circular icon
+    private TextView statusView;  // [NEW] The blue bar at the bottom
     private TextInputEditText domainInput, keyInput, dnsInput;
     private DrawerLayout drawerLayout;
     private ListView configListView;
     private ArrayAdapter<String> configAdapter;
     private List<Config> configList = new ArrayList<>();
+
+    // Status Logic Variables
+    private boolean isLogsVisible = false;
+    private boolean isTestingPhase = false;
+    private int logBatchCount = 0;
+    private int streamLogCount = 0;
 
     private static class Config {
         String name;
@@ -67,10 +77,12 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("com.devpixl.dnstt.LOG_UPDATE".equals(intent.getAction())) {
-                log(intent.getStringExtra("log"));
+                String logMsg = intent.getStringExtra("log");
+                log(logMsg);
+                updateStatusLogic(logMsg); // [NEW] Run status logic
             } else if ("com.devpixl.dnstt.STATUS_UPDATE".equals(intent.getAction())) {
                 boolean running = intent.getBooleanExtra("running", false);
-                btnStart.setText(running ? "Stop Tunnel" : "Start Tunnel");
+                updateStartButtonState(running);
             }
         }
     };
@@ -81,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
 
         drawerLayout = new DrawerLayout(this);
 
-        // --- Main Content ---
+        // --- Main Content Container ---
         LinearLayout mainContent = new LinearLayout(this);
         mainContent.setOrientation(LinearLayout.VERTICAL);
         mainContent.setLayoutParams(new DrawerLayout.LayoutParams(
@@ -92,20 +104,27 @@ public class MainActivity extends AppCompatActivity {
         MaterialToolbar toolbar = new MaterialToolbar(this);
         toolbar.setTitle("DNSTT Runner");
         toolbar.setElevation(8f);
-
         mainContent.addView(toolbar);
         setSupportActionBar(toolbar);
 
-        // Enable the Hamburger Menu icon
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_menu);
         }
 
-        // 2. Body
+        // 2. Body Container (Holds Inputs, Spacer, Logs, Button, Status)
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(50, 50, 50, 50);
+        // Use weight sum to ensure layout distribution
+        body.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        // --- Inputs Section ---
+        LinearLayout inputsContainer = new LinearLayout(this);
+        inputsContainer.setOrientation(LinearLayout.VERTICAL);
+        inputsContainer.setPadding(50, 50, 50, 20);
 
         TextInputLayout domainLayout = createInputLayout("Domain (e.g. t.example.com)");
         domainInput = (TextInputEditText) domainLayout.getEditText();
@@ -117,32 +136,78 @@ public class MainActivity extends AppCompatActivity {
         dnsInput = (TextInputEditText) dnsLayout.getEditText();
         dnsInput.setText("8.8.8.8:53");
 
-        body.addView(domainLayout);
-        body.addView(keyLayout);
-        body.addView(dnsLayout);
+        inputsContainer.addView(domainLayout);
+        inputsContainer.addView(keyLayout);
+        inputsContainer.addView(dnsLayout);
 
-        btnStart = new MaterialButton(this);
-        btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
+        body.addView(inputsContainer);
 
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnParams.setMargins(0, 20, 0, 20);
-        btnStart.setLayoutParams(btnParams);
+        // --- Spacer (Push Button to bottom) ---
+        // This view takes up all available space between inputs and bottom area
+        View spacer = new View(this);
+        spacer.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        body.addView(spacer);
 
-        body.addView(btnStart);
-
+        // --- Logs Section (Hidden by default) ---
         logView = new TextView(this);
-        logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
+        logView.setText("Logs:\n");
         logView.setTextIsSelectable(true);
+        logView.setPadding(20, 20, 20, 20);
 
         logScrollView = new ScrollView(this);
         logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
+        logScrollView.setBackgroundColor(0xFFEEEEEE); // Light gray background for contrast
 
-        body.addView(logScrollView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-        ));
+        // Default GONE. Fixed height when visible so it doesn't push button off screen completely
+        LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 400); // Fixed height 400px
+        logParams.setMargins(20, 0, 20, 20);
+        logScrollView.setLayoutParams(logParams);
+        logScrollView.setVisibility(View.GONE); // [ACTION 1] Hide by default
+
+        body.addView(logScrollView);
+
+        // --- Bottom Area (Connect Button + Status Bar) ---
+        LinearLayout bottomArea = new LinearLayout(this);
+        bottomArea.setOrientation(LinearLayout.VERTICAL);
+        bottomArea.setGravity(Gravity.CENTER_HORIZONTAL);
+        bottomArea.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // [ACTION 2] Circular Connect Button
+        btnStart = new ImageButton(this);
+        btnStart.setImageResource(R.drawable.ic_app_icon); // Uses your blue icon
+        btnStart.setBackgroundColor(Color.TRANSPARENT); // Remove button background
+        btnStart.setScaleType(ImageView.ScaleType.FIT_CENTER);
+
+        int btnSize = 250; // Size in pixels
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(btnSize, btnSize);
+        btnParams.setMargins(0, 0, 0, 40); // Space above status bar
+        btnStart.setLayoutParams(btnParams);
+
+        bottomArea.addView(btnStart);
+
+        // [ACTION 3] Status Bar (Blue Bar)
+        statusView = new TextView(this);
+        statusView.setText("Ready");
+        statusView.setTextColor(Color.WHITE);
+        statusView.setTypeface(null, Typeface.BOLD);
+        statusView.setGravity(Gravity.CENTER);
+        statusView.setPadding(0, 30, 0, 30);
+        statusView.setTextSize(16);
+
+        // Set background to Primary Color (Brand Blue)
+        TypedValue typedValue = new TypedValue();
+        getTheme().resolveAttribute(com.google.android.material.R.attr.colorPrimary, typedValue, true);
+        statusView.setBackgroundColor(typedValue.data);
+
+        statusView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        bottomArea.addView(statusView);
+        body.addView(bottomArea);
 
         mainContent.addView(body);
 
@@ -150,7 +215,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
 
-        TypedValue typedValue = new TypedValue();
+        // Use Material 3 Surface Color
         getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true);
         drawerContainer.setBackgroundColor(typedValue.data);
 
@@ -158,8 +223,7 @@ public class MainActivity extends AppCompatActivity {
         drawerContainer.setFocusable(true);
 
         DrawerLayout.LayoutParams drawerParams = new DrawerLayout.LayoutParams(
-                750,
-                DrawerLayout.LayoutParams.MATCH_PARENT);
+                750, DrawerLayout.LayoutParams.MATCH_PARENT);
         drawerParams.gravity = Gravity.START;
         drawerContainer.setLayoutParams(drawerParams);
         drawerContainer.setPadding(40, 60, 40, 40);
@@ -173,13 +237,11 @@ public class MainActivity extends AppCompatActivity {
         configAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         configListView.setAdapter(configAdapter);
 
-        // Click to Load
         configListView.setOnItemClickListener((parent, view, position, id) -> {
             loadConfigToInputs(configList.get(position));
             drawerLayout.closeDrawers();
         });
 
-        // Long Click to show Options Menu
         configListView.setOnItemLongClickListener((parent, view, position, id) -> {
             showConfigOptionsMenu(view, position);
             return true;
@@ -195,17 +257,24 @@ public class MainActivity extends AppCompatActivity {
 
         loadConfigsFromStorage();
 
+        // Start Button Click Logic
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             if (ProxyService.isRunning) {
-                btnStart.setText("Start Tunnel");
+                // Stop
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
-                btnStart.setText("Stop Tunnel");
+                // Start
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
                 serviceIntent.putExtra("dns", dnsInput.getText().toString());
+
+                // [LOGIC] Reset Status Logic on Start
+                isTestingPhase = true;
+                logBatchCount = 0;
+                streamLogCount = 0;
+                statusView.setText("Testing..."); // Initial Phase Text
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
@@ -214,6 +283,56 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        updateStartButtonState(ProxyService.isRunning);
+    }
+
+    // [ACTION 3] Status Bar Logic
+    private void updateStatusLogic(String message) {
+        if (!ProxyService.isRunning) {
+            statusView.setText("Ready");
+            return;
+        }
+
+        // Phase 1: Initiation
+        if (isTestingPhase) {
+            statusView.setText("Testing...");
+            if (message.contains("begin session")) {
+                isTestingPhase = false; // Move to Phase 2
+                logBatchCount = 0;
+                streamLogCount = 0;
+            }
+            return;
+        }
+
+        // Phase 2: Monitoring (Batch of 5 logs)
+        logBatchCount++;
+
+        if (message.contains("begin stream") || message.contains("end stream")) {
+            streamLogCount++;
+        }
+
+        if (logBatchCount >= 5) {
+            // Check logic
+            if (streamLogCount >= 3) {
+                statusView.setText("Connected");
+            } else {
+                statusView.setText("Timed-out");
+            }
+
+            // Reset for next batch
+            logBatchCount = 0;
+            streamLogCount = 0;
+        }
+    }
+
+    private void updateStartButtonState(boolean isRunning) {
+        // Visual feedback for button could be opacity change or icon change
+        // Since we use the app icon, maybe slightly dim it if running?
+        // For now, keeping it simple as per request.
+        if (!isRunning) {
+            statusView.setText("Ready");
+        }
     }
 
     @Override
@@ -226,7 +345,6 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
-        // Handle Hamburger Menu Click
         if (id == android.R.id.home) {
             drawerLayout.openDrawer(Gravity.LEFT);
             return true;
@@ -241,14 +359,21 @@ public class MainActivity extends AppCompatActivity {
         } else if (id == R.id.action_export) {
             exportToClipboard();
             return true;
+        } else if (id == R.id.action_toggle_logs) {
+            // [ACTION 1] Toggle Logs Visibility
+            isLogsVisible = !isLogsVisible;
+            logScrollView.setVisibility(isLogsVisible ? View.VISIBLE : View.GONE);
+            return true;
         }
 
         return super.onOptionsItemSelected(item);
     }
 
+    // ... [Rest of the helper methods remain unchanged] ...
+
     private void showConfigOptionsMenu(View view, int position) {
         PopupMenu popup = new PopupMenu(this, view);
-        getMenuInflater().inflate(R.menu.config_item_menu, popup.getMenu());
+        getMenuInflater().inflate(R.menu.config_menu_item, popup.getMenu());
         popup.setOnMenuItemClickListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.action_delete_config) {
@@ -368,7 +493,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Exports inputs from UI (cannot export name as it's not on screen)
     private void exportToClipboard() {
         try {
             JSONObject obj = new JSONObject();
@@ -382,11 +506,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // [CHANGE] Now includes "name" in export
     private void exportConfigToClipboard(Config c) {
         try {
             JSONObject obj = new JSONObject();
-            obj.put("name", c.name); // Export name too
+            obj.put("name", c.name);
             obj.put("domain", c.domain);
             obj.put("key", c.key);
             obj.put("dns", c.dns);
@@ -404,7 +527,6 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, "Copied to Clipboard", Toast.LENGTH_SHORT).show();
     }
 
-    // [CHANGE] Auto-saves imported config and reads "name"
     private void importFromClipboard() {
         try {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -416,12 +538,10 @@ public class MainActivity extends AppCompatActivity {
                 String key = obj.getString("key");
                 String dns = obj.has("dns") ? obj.getString("dns") : "8.8.8.8:53";
 
-                // Populate UI
                 domainInput.setText(domain);
                 keyInput.setText(key);
                 dnsInput.setText(dns);
 
-                // Determine Name
                 String name;
                 if (obj.has("name") && !obj.getString("name").trim().isEmpty()) {
                     name = obj.getString("name");
@@ -429,7 +549,6 @@ public class MainActivity extends AppCompatActivity {
                     name = "Imported Config " + (configList.size() + 1);
                 }
 
-                // Auto-Save
                 saveConfig(new Config(name, domain, key, dns));
 
             } else {
@@ -451,7 +570,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             registerReceiver(logReceiver, filter);
         }
-        btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
+        updateStartButtonState(ProxyService.isRunning);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
