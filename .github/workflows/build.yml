@@ -60,13 +60,13 @@ jobs:
 
       - name: Rename APK to dnstt.apk
         run: |
-          # Find the APK and rename it to the fixed name "dnstt.apk"
+          # Finds the APK (e.g., app-release.apk) and renames it to "dnstt.apk"
           find release-dist -name "*.apk" -exec mv {} dnstt.apk \;
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dnstt.apk
+          files: dnstt.apk  # Uploads the renamed file
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false
