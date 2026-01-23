@@ -557,7 +557,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void log(String message) {
         if (message == null) return;
+
+        // We still append text so the history is there when you open it later
         logView.append(message + "\n");
-        logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
+
+        // [OPTIMIZATION] Only scroll if the view is actually visible
+        if (isLogsVisible) {
+            logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
+        }
     }
-}
