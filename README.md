@@ -56,6 +56,19 @@ If you want to build the APK from source:
     ./gradlew assembleRelease
     ```
 
+## 📖 How to Use
+
+After connecting:
+
+1.  **Configure your apps** to use a SOCKS5 proxy:
+    * **IP**: `127.0.0.1`
+    * **Port**: `1080`
+
+2.  **Telegram Users**:
+    * Click this link to automatically set up the proxy in Telegram:
+        [**Connect Telegram Proxy**](https://t.me/socks?server=127.0.0.1&port=1080)
+        
+
 ## 🤝 Contributing
 
 We welcome contributions! Please feel free to submit a Pull Request or open an Issue.
