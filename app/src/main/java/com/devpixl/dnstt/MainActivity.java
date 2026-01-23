@@ -38,7 +38,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView logView;
     private ScrollView logScrollView;
     private Button btnStart;
-    private EditText domainInput, keyInput;
+    // [CHANGE] Added dnsInput
+    private EditText domainInput, keyInput, dnsInput;
     private DrawerLayout drawerLayout;
     private ListView configListView;
     private ArrayAdapter<String> configAdapter;
@@ -49,11 +50,13 @@ public class MainActivity extends AppCompatActivity {
         String name;
         String domain;
         String key;
+        String dns; // [CHANGE] Added dns field
 
-        Config(String name, String domain, String key) {
+        Config(String name, String domain, String key, String dns) {
             this.name = name;
             this.domain = domain;
             this.key = key;
+            this.dns = dns;
         }
     }
 
@@ -77,31 +80,31 @@ public class MainActivity extends AppCompatActivity {
         boolean isDark = isDarkMode();
         int colorBg = isDark ? Color.BLACK : Color.WHITE;
         int colorText = isDark ? Color.WHITE : Color.BLACK;
-        int colorSurface = isDark ? Color.parseColor("#202020") : Color.parseColor("#EEEEEE"); // Slightly different for header
+        int colorSurface = isDark ? Color.parseColor("#202020") : Color.parseColor("#EEEEEE");
 
         // --- Root Layout ---
         drawerLayout = new DrawerLayout(this);
-        
+
         // --- Main Content ---
         LinearLayout mainContent = new LinearLayout(this);
         mainContent.setOrientation(LinearLayout.VERTICAL);
         mainContent.setLayoutParams(new DrawerLayout.LayoutParams(
-                DrawerLayout.LayoutParams.MATCH_PARENT, 
+                DrawerLayout.LayoutParams.MATCH_PARENT,
                 DrawerLayout.LayoutParams.MATCH_PARENT));
-        mainContent.setBackgroundColor(colorBg); // Set main background
+        mainContent.setBackgroundColor(colorBg);
 
         // 1. Toolbar
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setBackgroundColor(colorSurface); 
+        toolbar.setBackgroundColor(colorSurface);
         toolbar.setPadding(30, 30, 30, 30);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setElevation(8f);
 
         ImageButton btnMenu = new ImageButton(this);
         btnMenu.setImageResource(R.drawable.ic_menu);
-        btnMenu.setBackgroundColor(0); // Transparent
-        btnMenu.setColorFilter(colorText, PorterDuff.Mode.SRC_IN); // Force Icon Color
+        btnMenu.setBackgroundColor(0);
+        btnMenu.setColorFilter(colorText, PorterDuff.Mode.SRC_IN);
         btnMenu.setOnClickListener(v -> drawerLayout.openDrawer(Gravity.LEFT));
 
         TextView title = new TextView(this);
@@ -109,12 +112,12 @@ public class MainActivity extends AppCompatActivity {
         title.setTextSize(20);
         title.setPadding(40, 0, 0, 0);
         title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        title.setTextColor(colorText); // Force Text Color
+        title.setTextColor(colorText);
 
         ImageButton btnOptions = new ImageButton(this);
         btnOptions.setImageResource(R.drawable.ic_add);
         btnOptions.setBackgroundColor(0);
-        btnOptions.setColorFilter(colorText, PorterDuff.Mode.SRC_IN); // Force Icon Color
+        btnOptions.setColorFilter(colorText, PorterDuff.Mode.SRC_IN);
         btnOptions.setOnClickListener(this::showOptionsMenu);
 
         toolbar.addView(btnMenu);
@@ -127,50 +130,59 @@ public class MainActivity extends AppCompatActivity {
         body.setPadding(50, 50, 50, 50);
 
         domainInput = new EditText(this);
-        domainInput.setId(View.generateViewId()); // <--- FIX BUG #3: Adding ID saves text on theme switch
+        domainInput.setId(View.generateViewId());
         domainInput.setHint("Domain (e.g. t.example.com)");
         domainInput.setTextColor(colorText);
         domainInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
-        
+
         keyInput = new EditText(this);
-        keyInput.setId(View.generateViewId()); // <--- FIX BUG #3
+        keyInput.setId(View.generateViewId());
         keyInput.setHint("Paste Public Key Here");
         keyInput.setTextColor(colorText);
         keyInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
-        
+
+        // [CHANGE] Initialize DNS input
+        dnsInput = new EditText(this);
+        dnsInput.setId(View.generateViewId());
+        dnsInput.setHint("UDP DNS (e.g. 8.8.8.8:53)");
+        dnsInput.setText("8.8.8.8:53"); // Set a default value
+        dnsInput.setTextColor(colorText);
+        dnsInput.setHintTextColor(isDark ? Color.GRAY : Color.LTGRAY);
+
         btnStart = new Button(this);
         btnStart.setText(ProxyService.isRunning ? "Stop Tunnel" : "Start Tunnel");
 
         logView = new TextView(this);
         logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logView.setTextIsSelectable(true);
-        logView.setTextColor(colorText); // Force Log Text Color
-        
+        logView.setTextColor(colorText);
+
         logScrollView = new ScrollView(this);
-        logScrollView.setId(View.generateViewId()); // Save scroll position
+        logScrollView.setId(View.generateViewId());
         logScrollView.addView(logView);
-        
+
         body.addView(domainInput);
         body.addView(keyInput);
+        body.addView(dnsInput); // [CHANGE] Add DNS input to layout
         body.addView(btnStart);
         body.addView(logScrollView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
         ));
 
         mainContent.addView(toolbar);
         mainContent.addView(body);
 
-        // --- Drawer Content (Saved Configs) ---
+        // --- Drawer Content ---
         LinearLayout drawerContainer = new LinearLayout(this);
         drawerContainer.setOrientation(LinearLayout.VERTICAL);
-        drawerContainer.setBackgroundColor(colorBg); // Match main background
-        
+        drawerContainer.setBackgroundColor(colorBg);
+
         drawerContainer.setClickable(true);
         drawerContainer.setFocusable(true);
-        
+
         DrawerLayout.LayoutParams drawerParams = new DrawerLayout.LayoutParams(
-                750, 
+                750,
                 DrawerLayout.LayoutParams.MATCH_PARENT);
         drawerParams.gravity = Gravity.START;
         drawerContainer.setLayoutParams(drawerParams);
@@ -180,13 +192,12 @@ public class MainActivity extends AppCompatActivity {
         drawerTitle.setText("Saved Configs");
         drawerTitle.setTextSize(22);
         drawerTitle.setPadding(0, 0, 0, 40);
-        drawerTitle.setTextColor(colorText); 
+        drawerTitle.setTextColor(colorText);
 
         configListView = new ListView(this);
         configAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, new ArrayList<>()) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
-                // Force list items to have correct text color
                 View view = super.getView(position, convertView, parent);
                 TextView text = (TextView) view.findViewById(android.R.id.text1);
                 text.setTextColor(colorText);
@@ -194,12 +205,12 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         configListView.setAdapter(configAdapter);
-        
+
         configListView.setOnItemClickListener((parent, view, position, id) -> {
             loadConfigToInputs(configList.get(position));
             drawerLayout.closeDrawers();
         });
-        
+
         configListView.setOnItemLongClickListener((parent, view, position, id) -> {
             confirmDeleteConfig(position);
             return true;
@@ -219,14 +230,15 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setOnClickListener(v -> {
             Intent serviceIntent = new Intent(this, ProxyService.class);
             if (ProxyService.isRunning) {
-                btnStart.setText("Start Tunnel"); 
+                btnStart.setText("Start Tunnel");
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
                 btnStart.setText("Stop Tunnel");
                 serviceIntent.putExtra("domain", domainInput.getText().toString());
                 serviceIntent.putExtra("key", keyInput.getText().toString());
-                
+                serviceIntent.putExtra("dns", dnsInput.getText().toString()); // [CHANGE] Pass DNS value
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent);
                 } else {
@@ -236,13 +248,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Helper: Detect Dark Mode Reliable
     private boolean isDarkMode() {
         int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
         return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
     }
 
-    // --- Options Menu ---
     private void showOptionsMenu(View v) {
         PopupMenu popup = new PopupMenu(this, v);
         popup.getMenu().add("Save Current Config");
@@ -263,7 +273,6 @@ public class MainActivity extends AppCompatActivity {
         popup.show();
     }
 
-    // --- Config Logic ---
     private void promptSaveConfig() {
         final EditText nameInput = new EditText(this);
         nameInput.setHint("Config Name");
@@ -274,7 +283,13 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("Save", (dialog, which) -> {
                     String name = nameInput.getText().toString();
                     if (!name.isEmpty()) {
-                        saveConfig(new Config(name, domainInput.getText().toString(), keyInput.getText().toString()));
+                        // [CHANGE] Save dnsInput text
+                        saveConfig(new Config(
+                            name,
+                            domainInput.getText().toString(),
+                            keyInput.getText().toString(),
+                            dnsInput.getText().toString()
+                        ));
                     }
                 })
                 .setNegativeButton("Cancel", null)
@@ -303,6 +318,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadConfigToInputs(Config c) {
         domainInput.setText(c.domain);
         keyInput.setText(c.key);
+        dnsInput.setText(c.dns); // [CHANGE] Load DNS to input
     }
 
     private void updateDrawerList() {
@@ -322,6 +338,7 @@ public class MainActivity extends AppCompatActivity {
                 obj.put("name", c.name);
                 obj.put("domain", c.domain);
                 obj.put("key", c.key);
+                obj.put("dns", c.dns); // [CHANGE] Store DNS in JSON
                 arr.put(obj);
             }
             SharedPreferences prefs = getSharedPreferences("dnstt_prefs", MODE_PRIVATE);
@@ -339,7 +356,9 @@ public class MainActivity extends AppCompatActivity {
             JSONArray arr = new JSONArray(jsonStr);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                configList.add(new Config(obj.getString("name"), obj.getString("domain"), obj.getString("key")));
+                // [CHANGE] Retrieve DNS from JSON (with fallback)
+                String dns = obj.has("dns") ? obj.getString("dns") : "8.8.8.8:53";
+                configList.add(new Config(obj.getString("name"), obj.getString("domain"), obj.getString("key"), dns));
             }
             updateDrawerList();
         } catch (Exception e) {
@@ -353,6 +372,7 @@ public class MainActivity extends AppCompatActivity {
             JSONObject obj = new JSONObject();
             obj.put("domain", domainInput.getText().toString());
             obj.put("key", keyInput.getText().toString());
+            obj.put("dns", dnsInput.getText().toString()); // [CHANGE] Export DNS
             String json = obj.toString();
 
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -372,6 +392,10 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject obj = new JSONObject(json);
                 domainInput.setText(obj.getString("domain"));
                 keyInput.setText(obj.getString("key"));
+                // [CHANGE] Import DNS if available
+                if(obj.has("dns")) {
+                    dnsInput.setText(obj.getString("dns"));
+                }
                 Toast.makeText(this, "Imported!", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "Clipboard empty", Toast.LENGTH_SHORT).show();
@@ -381,6 +405,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ... (onResume, onPause, log, etc. remain the same)
     @Override
     protected void onResume() {
         super.onResume();

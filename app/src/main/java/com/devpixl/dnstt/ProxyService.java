@@ -18,7 +18,6 @@ public class ProxyService extends Service {
 
     private Process proxyProcess;
     public static boolean isRunning = false;
-    // We'll keep a small buffer of logs so they appear when you reopen the app
     public static StringBuilder logBuffer = new StringBuilder();
 
     @Override
@@ -31,24 +30,29 @@ public class ProxyService extends Service {
             return START_NOT_STICKY;
         }
 
-        // 1. Start Foreground Notification immediately
         startForeground(1, createNotification("Tunnel Starting..."));
 
         String domain = intent.getStringExtra("domain");
         String key = intent.getStringExtra("key");
-        
-        startTunnel(domain, key);
+        // [CHANGE] Retrieve DNS string, default to Google DNS if missing
+        String dns = intent.getStringExtra("dns");
+        if (dns == null || dns.isEmpty()) {
+            dns = "8.8.8.8:53";
+        }
+
+        startTunnel(domain, key, dns); // [CHANGE] Pass DNS
 
         return START_STICKY;
     }
 
-    private void startTunnel(String domain, String pubKeyContent) {
+    // [CHANGE] Added dnsAddr parameter
+    private void startTunnel(String domain, String pubKeyContent, String dnsAddr) {
         if (isRunning) return;
         isRunning = true;
-        
-        // Broadcast "STARTED" status immediately so button updates
+
         broadcastStatus(true);
-        logToUI("Service: Starting tunnel for " + domain + "...");
+        // [CHANGE] Log the DNS being used
+        logToUI("Service: Starting tunnel for " + domain + " via " + dnsAddr + "...");
 
         new Thread(() -> {
             try {
@@ -63,7 +67,7 @@ public class ProxyService extends Service {
                 String binaryPath = getApplicationInfo().nativeLibraryDir + "/libdnstt.so";
                 String[] cmd = {
                     binaryPath,
-                    "-udp", "8.8.8.8:53",
+                    "-udp", dnsAddr, // [CHANGE] Use the variable here
                     "-pubkey-file", keyFile.getAbsolutePath(),
                     domain,
                     "127.0.0.1:1080"
@@ -96,26 +100,24 @@ public class ProxyService extends Service {
         }
         stopForeground(true);
         stopSelf();
-        
+
         broadcastStatus(false);
         logToUI("Service: Tunnel Stopped.");
     }
 
     private void broadcastStatus(boolean running) {
         Intent i = new Intent("com.devpixl.dnstt.STATUS_UPDATE");
-        i.setPackage(getPackageName()); // Explicit broadcast for reliability
+        i.setPackage(getPackageName());
         i.putExtra("running", running);
         sendBroadcast(i);
     }
 
     private void logToUI(String message) {
-        // Append to static buffer
-        if (logBuffer.length() > 5000) logBuffer.setLength(0); // Prevent overflow
+        if (logBuffer.length() > 5000) logBuffer.setLength(0);
         logBuffer.append(message).append("\n");
 
-        // Broadcast to Activity
         Intent i = new Intent("com.devpixl.dnstt.LOG_UPDATE");
-        i.setPackage(getPackageName()); // Explicit broadcast for reliability
+        i.setPackage(getPackageName());
         i.putExtra("log", message);
         sendBroadcast(i);
     }
@@ -133,7 +135,7 @@ public class ProxyService extends Service {
         return new NotificationCompat.Builder(this, channelId)
                 .setContentTitle("DNSTT Proxy")
                 .setContentText(text)
-                .setSmallIcon(R.drawable.ic_app_icon) // Use our new icon
+                .setSmallIcon(R.drawable.ic_app_icon)
                 .setContentIntent(pi)
                 .build();
     }
