@@ -21,7 +21,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/DevPIXL/dnstt-android-proxy?style=flat-square&color=blue&label=Latest%20Version&logo=github)](https://github.com/DevPIXL/dnstt-android-proxy/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/DevPIXL/dnstt-android-proxy/total?style=flat-square&color=orange&label=Downloads&logo=android)](https://github.com/DevPIXL/dnstt-android-proxy/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/DevPIXL/dnstt-android-proxy/build.yml?style=flat-square&label=Build&logo=github-actions)](https://github.com/DevPIXL/dnstt-android-proxy/actions)
-[![License](https://img.shields.io/github/license/DevPIXL/dnstt-android-proxy?style=flat-square&color=red)](LICENSE)
+[![License](https://img.shields.io/github/license/DevPIXL/dnstt-android-proxy?style=flat-square&color=yellow)](LICENSE)
 
 </div>
 
@@ -68,6 +68,10 @@ Special thanks to the following projects for making this possible:
 
 * **[dnstt.network](https://dnstt.network)**: For the core DNS Tunneling Tool concept and resources.
 * **[dnstt-deploy](https://github.com/bugfloyd/dnstt-deploy)**: For the excellent deployment scripts and community support.
+
+## 📄 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 <div align="center">
 Made with ❤️ by DevPIXL
