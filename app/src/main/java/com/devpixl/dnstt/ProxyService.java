@@ -1,4 +1,4 @@
-package com.example.dnstt;
+package com.devpixl.dnstt;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -102,7 +102,7 @@ public class ProxyService extends Service {
     }
 
     private void broadcastStatus(boolean running) {
-        Intent i = new Intent("com.example.dnstt.STATUS_UPDATE");
+        Intent i = new Intent("com.devpixl.dnstt.STATUS_UPDATE");
         i.setPackage(getPackageName()); // Explicit broadcast for reliability
         i.putExtra("running", running);
         sendBroadcast(i);
@@ -114,7 +114,7 @@ public class ProxyService extends Service {
         logBuffer.append(message).append("\n");
 
         // Broadcast to Activity
-        Intent i = new Intent("com.example.dnstt.LOG_UPDATE");
+        Intent i = new Intent("com.devpixl.dnstt.LOG_UPDATE");
         i.setPackage(getPackageName()); // Explicit broadcast for reliability
         i.putExtra("log", message);
         sendBroadcast(i);

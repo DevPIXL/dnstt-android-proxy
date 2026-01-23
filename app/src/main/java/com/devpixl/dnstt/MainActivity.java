@@ -1,4 +1,4 @@
-package com.example.dnstt;
+package com.devpixl.dnstt;
 
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -60,9 +60,9 @@ public class MainActivity extends AppCompatActivity {
     private final BroadcastReceiver logReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if ("com.example.dnstt.LOG_UPDATE".equals(intent.getAction())) {
+            if ("com.devpixl.dnstt.LOG_UPDATE".equals(intent.getAction())) {
                 log(intent.getStringExtra("log"));
-            } else if ("com.example.dnstt.STATUS_UPDATE".equals(intent.getAction())) {
+            } else if ("com.devpixl.dnstt.STATUS_UPDATE".equals(intent.getAction())) {
                 boolean running = intent.getBooleanExtra("running", false);
                 btnStart.setText(running ? "Stop Tunnel" : "Start Tunnel");
             }
@@ -385,8 +385,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         IntentFilter filter = new IntentFilter();
-        filter.addAction("com.example.dnstt.LOG_UPDATE");
-        filter.addAction("com.example.dnstt.STATUS_UPDATE");
+        filter.addAction("com.devpixl.dnstt.LOG_UPDATE");
+        filter.addAction("com.devpixl.dnstt.STATUS_UPDATE");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
