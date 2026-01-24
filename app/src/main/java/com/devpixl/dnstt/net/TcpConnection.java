@@ -20,8 +20,8 @@ public class TcpConnection {
     private final AtomicLong ourSeq = new AtomicLong(INITIAL_SEQ);
     private long clientSeq = 0;
 
-    // [FIX] Track activity to prevent memory leaks
-    public long lastActivity = System.currentTimeMillis();
+    // [FIX] Volatile to ensure visibility across threads (cleaner vs worker)
+    public volatile long lastActivity = System.currentTimeMillis();
 
     private enum State { SYN_RECEIVED, ESTABLISHED, FIN_WAIT, CLOSED }
     private volatile State state = State.SYN_RECEIVED;

@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo; // [FIX] Added import
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
@@ -41,7 +42,6 @@ public class DnsttVpnService extends VpnService {
     private static final String VPN_CHANNEL_ID = "dnstt_vpn_channel";
     private static final int NOTIFICATION_ID = 1;
 
-    // [FIX] Static flag to track service state for UI
     public static boolean isServiceRunning = false;
 
     // Config
@@ -86,7 +86,7 @@ public class DnsttVpnService extends VpnService {
     private void startVpn(String domain, String pubKey) {
         if (isRunning.get()) return;
         isRunning.set(true);
-        isServiceRunning = true; // [FIX] Update static state
+        isServiceRunning = true;
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
@@ -105,7 +105,14 @@ public class DnsttVpnService extends VpnService {
         }, 60000, 60000);
 
         createNotificationChannel();
-        startForeground(NOTIFICATION_ID, createNotification("Starting Tunnel..."));
+
+        // [FIX] Provide ServiceType for Android 14 compliance
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, createNotification("Starting Tunnel..."),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification("Starting Tunnel..."));
+        }
 
         sendLog("Starting VPN Service...");
 
@@ -264,9 +271,16 @@ public class DnsttVpnService extends VpnService {
                 vpnOutput, socksClient
             );
 
-            if (connection.handleSyn(tcpHeader.sequenceNumber)) {
-                tcpConnections.put(connectionId, connection);
-            }
+            // [FIX] Register connection immediately to avoid race conditions or duplicates
+            tcpConnections.put(connectionId, connection);
+
+            // [FIX] Execute the blocking handshake in the thread pool to avoid freezing the VPN loop
+            dnsThreadPool.execute(() -> {
+                if (!connection.handleSyn(tcpHeader.sequenceNumber)) {
+                    connection.close();
+                    tcpConnections.remove(connectionId);
+                }
+            });
 
         } else if (tcpConnections.containsKey(connectionId)) {
             TcpConnection connection = tcpConnections.get(connectionId);
@@ -362,7 +376,7 @@ public class DnsttVpnService extends VpnService {
 
     private void stopVpn() {
         isRunning.set(false);
-        isServiceRunning = false; // [FIX] Update static state
+        isServiceRunning = false;
         sendStatus(false);
         sendLog("VPN Service Stopped");
 

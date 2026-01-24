@@ -11,6 +11,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_app_icon"
         android:label="DNSTT Runner"
+        android:extractNativeLibs="true"
         android:theme="@style/Theme.DNSTT">
         <activity
             android:name=".MainActivity"
