@@ -7,7 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager; // ADDED
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
@@ -34,7 +34,7 @@ import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.app.ActivityCompat; // ADDED
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
@@ -102,7 +102,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // [FIX] Request Notification Permission for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
@@ -622,8 +621,11 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
 
-        if (!statusView.getText().equals("Disconnected")) {
-             // Keep current state
+        // [FIX] Sync UI with Service State on Resume
+        if (DnsttVpnService.isServiceRunning) {
+            if (statusView.getText().equals("Disconnected")) {
+                updateUIState("Testing..."); // Or a generic "Connected" until logs arrive
+            }
         } else {
             updateUIState("Disconnected");
         }

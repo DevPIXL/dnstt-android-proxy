@@ -41,14 +41,13 @@ public class DnsttVpnService extends VpnService {
     private static final String VPN_CHANNEL_ID = "dnstt_vpn_channel";
     private static final int NOTIFICATION_ID = 1;
 
+    // [FIX] Static flag to track service state for UI
+    public static boolean isServiceRunning = false;
+
     // Config
     private String proxyHost = "127.0.0.1";
     private int proxyPort = 1080;
-
-    // [FIX] Separation of concerns:
-    // transportDns: The server the binary uses to talk to the outside world (User Input)
     private String transportDns = "8.8.8.8";
-    // internalDns: The server apps use INSIDE the tunnel (Hardcoded Public DNS)
     private String internalDns = "8.8.8.8";
 
     // State
@@ -76,9 +75,7 @@ public class DnsttVpnService extends VpnService {
         String pubKey = intent.getStringExtra("key");
         String dns = intent.getStringExtra("dns");
 
-        // [FIX] Parse the user input for the TRANSPORT DNS only
         if (dns != null && !dns.isEmpty()) {
-            // Keep the port if provided, binary handles it
             this.transportDns = dns;
         }
 
@@ -89,6 +86,7 @@ public class DnsttVpnService extends VpnService {
     private void startVpn(String domain, String pubKey) {
         if (isRunning.get()) return;
         isRunning.set(true);
+        isServiceRunning = true; // [FIX] Update static state
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
@@ -113,10 +111,8 @@ public class DnsttVpnService extends VpnService {
 
         new Thread(() -> {
             try {
-                // 1. Start Binary with TRANSPORT DNS
                 startDnsttBinary(domain, pubKey, transportDns);
 
-                // 2. Establish VPN with INTERNAL DNS
                 if (!establishVpnInterface()) {
                     sendLog("Error: Failed to establish VPN interface");
                     stopVpn();
@@ -161,10 +157,7 @@ public class DnsttVpnService extends VpnService {
                 builder.addRoute("::", 0);
             } catch (IllegalArgumentException ignored) {}
 
-            // [FIX] Tell Android apps to use the internal public DNS
             builder.addDnsServer(internalDns);
-
-            // [FIX] Lower MTU prevents fragmentation issues in tunnels
             builder.setMtu(1280);
             builder.setBlocking(true);
 
@@ -197,7 +190,7 @@ public class DnsttVpnService extends VpnService {
 
         String[] cmd = {
             binaryPath,
-            "-udp", dnsAddr, // Use the user-provided transport DNS
+            "-udp", dnsAddr,
             "-pubkey-file", keyFile.getAbsolutePath(),
             domain,
             proxyHost + ":" + proxyPort
@@ -309,8 +302,6 @@ public class DnsttVpnService extends VpnService {
                         return;
                     }
 
-                    // [FIX] Force connection to internal Public DNS (8.8.8.8)
-                    // This ensures queries succeed even if the user provided a private IP for transport
                     byte[] ipBytes = InetAddress.getByName(internalDns).getAddress();
                     out.write(0x05);
                     out.write(0x01);
@@ -343,7 +334,6 @@ public class DnsttVpnService extends VpnService {
                     respIp.ihl = 5;
                     respIp.ttl = 64;
                     respIp.protocol = 17;
-                    // Fix: destination of response is the source of the request
                     respIp.sourceIp = ipHeader.destinationIp;
                     respIp.destinationIp = ipHeader.sourceIp;
                     respIp.identification = ipHeader.identification + 1;
@@ -372,6 +362,7 @@ public class DnsttVpnService extends VpnService {
 
     private void stopVpn() {
         isRunning.set(false);
+        isServiceRunning = false; // [FIX] Update static state
         sendStatus(false);
         sendLog("VPN Service Stopped");
 
