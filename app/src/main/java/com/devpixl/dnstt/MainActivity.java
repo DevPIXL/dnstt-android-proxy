@@ -7,11 +7,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager; // ADDED
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.VpnService; // [ADDED] Required for VPN Intent
+import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -33,8 +34,9 @@ import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.core.app.ActivityCompat; // ADDED
 import androidx.core.content.ContextCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -48,7 +50,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int VPN_REQUEST_CODE = 0x0F; // [ADDED] Request code for VPN permission
+    private static final int VPN_REQUEST_CODE = 0x0F;
 
     private TextView logView;
     private ScrollView logScrollView;
@@ -99,6 +101,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // [FIX] Request Notification Permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
 
         drawerLayout = new DrawerLayout(this);
 
@@ -280,35 +289,24 @@ public class MainActivity extends AppCompatActivity {
 
         loadConfigsFromStorage();
 
-        // Initial State
         updateUIState("Disconnected");
 
-        // [CHANGE] Updated Button Click Listener for VPN
         btnStart.setOnClickListener(v -> {
-            // Note: We check if the NEW service class is running.
-            // Ideally, add a static isRunning field to DnsttVpnService similar to ProxyService.
-            // For now, assuming standard start/stop intent behavior works.
-
-            // If the UI thinks we are connected, try to stop
             if (!statusView.getText().equals("Disconnected")) {
                 Intent serviceIntent = new Intent(this, DnsttVpnService.class);
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
             } else {
-                // Prepare VPN
                 Intent intent = VpnService.prepare(this);
                 if (intent != null) {
-                    // Request permission
                     startActivityForResult(intent, VPN_REQUEST_CODE);
                 } else {
-                    // Already have permission
                     startVpnService();
                 }
             }
         });
     }
 
-    // [ADDED] Handle VPN Permission Result
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -319,14 +317,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // [ADDED] Helper method to start the VPN Service
     private void startVpnService() {
-        Intent serviceIntent = new Intent(this, DnsttVpnService.class); // Use new Service class
+        Intent serviceIntent = new Intent(this, DnsttVpnService.class);
         serviceIntent.putExtra("domain", domainInput.getText().toString());
         serviceIntent.putExtra("key", keyInput.getText().toString());
         serviceIntent.putExtra("dns", dnsInput.getText().toString());
 
-        // Reset Logic Variables on Start
         isTestingPhase = true;
         logBatchCount = 0;
         streamLogCount = 0;
@@ -343,19 +339,16 @@ public class MainActivity extends AppCompatActivity {
         statusView.setText(status);
 
         if ("Disconnected".equals(status)) {
-            // Gray State
             statusView.setBackgroundColor(Color.GRAY);
             btnStart.setImageResource(R.drawable.ic_app_icon_gray);
             btnStart.clearColorFilter();
         }
         else if ("Timed-out".equals(status)) {
-            // Red State
             statusView.setBackgroundColor(Color.RED);
             btnStart.setImageResource(R.drawable.ic_app_icon_red);
             btnStart.clearColorFilter();
         }
         else {
-            // "Testing..." or "Connected" -> Blue State
             int brandBlue = ContextCompat.getColor(this, R.color.brand_blue);
             statusView.setBackgroundColor(brandBlue);
             btnStart.setImageResource(R.drawable.ic_app_icon);
@@ -364,8 +357,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusLogic(String message) {
-        // [NOTE] You might need to update this check to reference DnsttVpnService.isRunning
-        // or rely on the status update broadcast.
         if (message == null) return;
 
         boolean isSessionStart = message.contains("begin session");
@@ -631,16 +622,12 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
 
-        // Ideally check DnsttVpnService.isRunning here if you expose it as a static field
         if (!statusView.getText().equals("Disconnected")) {
-             // Keep current state or check persistent storage
+             // Keep current state
         } else {
-            // Default check
             updateUIState("Disconnected");
         }
 
-        // Removed ProxyService.logBuffer reference as it belongs to the old service
-        // logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
 

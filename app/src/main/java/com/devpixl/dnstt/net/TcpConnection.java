@@ -20,6 +20,9 @@ public class TcpConnection {
     private final AtomicLong ourSeq = new AtomicLong(INITIAL_SEQ);
     private long clientSeq = 0;
 
+    // [FIX] Track activity to prevent memory leaks
+    public long lastActivity = System.currentTimeMillis();
+
     private enum State { SYN_RECEIVED, ESTABLISHED, FIN_WAIT, CLOSED }
     private volatile State state = State.SYN_RECEIVED;
     private final Object outputLock = new Object();
@@ -36,6 +39,7 @@ public class TcpConnection {
     }
 
     public boolean handleSyn(long clientSeqNum) {
+        lastActivity = System.currentTimeMillis();
         this.clientSeq = clientSeqNum + 1;
 
         socks5Client.onDataReceived = this::sendDataToClient;
@@ -49,6 +53,7 @@ public class TcpConnection {
     }
 
     public void handleAck(long seqNum, long ackNum, byte[] payload) {
+        lastActivity = System.currentTimeMillis();
         if (state == State.SYN_RECEIVED) {
             if (ackNum == ourSeq.get() + 1) {
                 ourSeq.incrementAndGet();
@@ -64,6 +69,7 @@ public class TcpConnection {
     }
 
     public void handleFin(long seqNum) {
+        lastActivity = System.currentTimeMillis();
         state = State.FIN_WAIT;
         clientSeq = seqNum + 1;
         sendFinAck();
@@ -90,6 +96,7 @@ public class TcpConnection {
     }
 
     private void sendDataToClient(byte[] data) {
+        lastActivity = System.currentTimeMillis();
         if (state != State.ESTABLISHED) return;
 
         sendTcpPacket(PacketHeaders.TCPHeader.FLAG_ACK | PacketHeaders.TCPHeader.FLAG_PSH, data);

@@ -23,12 +23,14 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DnsttVpnService extends VpnService {
@@ -39,13 +41,16 @@ public class DnsttVpnService extends VpnService {
 
     // Config
     private String proxyHost = "127.0.0.1";
-    private int proxyPort = 1080; // The port your libdnstt.so listens on
-    private String dnsServer = "8.8.8.8"; // Default DNS Target
+    private int proxyPort = 1080;
+    private String dnsServer = "8.8.8.8";
 
     // State
     private AtomicBoolean isRunning = new AtomicBoolean(false);
     private ParcelFileDescriptor vpnInterface;
     private Process proxyProcess;
+
+    private ExecutorService dnsThreadPool;
+    private Timer connectionCleaner;
 
     // TCP State Management
     private ConcurrentHashMap<String, TcpConnection> tcpConnections = new ConcurrentHashMap<>();
@@ -59,14 +64,11 @@ public class DnsttVpnService extends VpnService {
             return START_NOT_STICKY;
         }
 
-        // Get config from intent
         String domain = intent.getStringExtra("domain");
         String pubKey = intent.getStringExtra("key");
         String dns = intent.getStringExtra("dns");
 
         if (dns != null && !dns.isEmpty()) {
-            // If user provides "8.8.8.8:53", extract just the IP for internal handling if needed
-            // But we pass the full string to the binary.
             String[] parts = dns.split(":");
             if (parts.length > 0) this.dnsServer = parts[0];
         }
@@ -79,6 +81,16 @@ public class DnsttVpnService extends VpnService {
         if (isRunning.get()) return;
         isRunning.set(true);
 
+        dnsThreadPool = Executors.newFixedThreadPool(50);
+
+        connectionCleaner = new Timer();
+        connectionCleaner.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                cleanupStaleConnections();
+            }
+        }, 60000, 60000);
+
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, createNotification("Starting Tunnel..."));
 
@@ -86,21 +98,18 @@ public class DnsttVpnService extends VpnService {
 
         new Thread(() -> {
             try {
-                // 1. Start the dnstt binary (SOCKS5 server)
                 startDnsttBinary(domain, pubKey, dnsString);
 
-                // 2. Establish VPN Interface
                 if (!establishVpnInterface()) {
                     sendLog("Error: Failed to establish VPN interface");
                     stopVpn();
                     return;
                 }
 
-                sendLog("VPN Interface Established. Tunneling traffic...");
+                sendLog("VPN Interface Established.");
                 updateNotification("Connected to " + domain);
                 sendStatus(true);
 
-                // 3. Run Packet Loop
                 runVpnLoop();
 
             } catch (Exception e) {
@@ -111,29 +120,36 @@ public class DnsttVpnService extends VpnService {
         }).start();
     }
 
+    private void cleanupStaleConnections() {
+        long now = System.currentTimeMillis();
+        long timeout = 60000; // 60 seconds
+        tcpConnections.entrySet().removeIf(entry -> {
+            boolean idle = (now - entry.getValue().lastActivity) > timeout;
+            if (idle) {
+                entry.getValue().close();
+                Log.d(TAG, "Pruned stale connection: " + entry.getKey());
+            }
+            return idle;
+        });
+    }
+
     private boolean establishVpnInterface() {
         try {
             Builder builder = new Builder();
             builder.setSession("DNSTT Tunnel");
             builder.addAddress("10.0.0.2", 32);
-            builder.addRoute("0.0.0.0", 0); // Redirect all IPv4 traffic
+            builder.addRoute("0.0.0.0", 0);
 
-            // [FIX] Block IPv6 to prevent leaks (DNSTT currently IPv4 only)
-            // Routing "::/0" to the VPN interface without an IPv6 address configured
-            // usually drops the packets, effectively blocking them.
+            // Block IPv6 leaks
             try {
                 builder.addAddress("fd00::1", 128);
                 builder.addRoute("::", 0);
-            } catch (IllegalArgumentException ignored) {
-                // IPv6 might not be supported on this device
-            }
+            } catch (IllegalArgumentException ignored) {}
 
             builder.addDnsServer(dnsServer);
             builder.setMtu(1500);
             builder.setBlocking(true);
 
-            // CRITICAL: Exclude our own app so the dnstt binary's traffic
-            // goes to the real internet, not back into the VPN.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 builder.addDisallowedApplication(getPackageName());
             }
@@ -152,14 +168,15 @@ public class DnsttVpnService extends VpnService {
             fos.write(pubKey.getBytes());
         }
 
+        // [REVERTED] Use nativeLibraryDir directly as it works on your device (Android 16)
         String binaryPath = getApplicationInfo().nativeLibraryDir + "/libdnstt.so";
         File binary = new File(binaryPath);
+
         if (!binary.exists()) {
-            sendLog("Error: libdnstt.so not found at " + binaryPath);
-            throw new IOException("Binary not found");
+            throw new IOException("Binary not found at " + binaryPath);
         }
 
-        // Attempt to make executable (often not needed for native libs but good practice if copied)
+        // Ensure executable permission is set (OS usually handles this for native libs)
         binary.setExecutable(true);
 
         String[] cmd = {
@@ -175,18 +192,16 @@ public class DnsttVpnService extends VpnService {
         pb.redirectErrorStream(true);
         proxyProcess = pb.start();
 
-        // Consume output in a separate thread
         new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(proxyProcess.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (line.contains("pubkey")) continue; // hide key in logs
+                    if (line.contains("pubkey")) continue;
                     sendLog("DNSTT: " + line);
                 }
             } catch (Exception ignored) {}
         }).start();
 
-        // Wait a bit for the binary to initialize
         Thread.sleep(1000);
     }
 
@@ -205,9 +220,9 @@ public class DnsttVpnService extends VpnService {
                     PacketHeaders.IPv4Header ipHeader = PacketHeaders.IPv4Header.parse(data);
 
                     if (ipHeader != null) {
-                        if (ipHeader.protocol == 6) { // TCP
+                        if (ipHeader.protocol == 6) {
                             processTcpPacket(ipHeader, vpnOutput);
-                        } else if (ipHeader.protocol == 17) { // UDP
+                        } else if (ipHeader.protocol == 17) {
                             processUdpPacket(ipHeader, vpnOutput);
                         }
                     }
@@ -229,7 +244,6 @@ public class DnsttVpnService extends VpnService {
                               "->" + ipHeader.destinationIp.getHostAddress() + ":" + tcpHeader.destinationPort;
 
         if (tcpHeader.isSYN() && !tcpHeader.isACK()) {
-            // New Connection
             com.devpixl.dnstt.net.Socks5Client socksClient = new com.devpixl.dnstt.net.Socks5Client(
                 proxyHost, proxyPort,
                 ipHeader.destinationIp.getHostAddress(), tcpHeader.destinationPort
@@ -247,7 +261,6 @@ public class DnsttVpnService extends VpnService {
 
         } else if (tcpConnections.containsKey(connectionId)) {
             TcpConnection connection = tcpConnections.get(connectionId);
-
             if (tcpHeader.isRST()) {
                 connection.close();
                 tcpConnections.remove(connectionId);
@@ -264,19 +277,15 @@ public class DnsttVpnService extends VpnService {
         PacketHeaders.UDPHeader udpHeader = PacketHeaders.UDPHeader.parse(ipHeader.payload);
         if (udpHeader == null) return;
 
-        // [FIX] Full Tunneling for DNS
-        // Instead of bypassing VPN (protect), we tunnel DNS over TCP via SOCKS5.
         if (udpHeader.destinationPort == 53) {
-            new Thread(() -> {
+            dnsThreadPool.execute(() -> {
                 try {
-                    // Connect to local SOCKS5 proxy
                     Socket socksSocket = new Socket(proxyHost, proxyPort);
                     socksSocket.setSoTimeout(5000);
                     DataOutputStream out = new DataOutputStream(socksSocket.getOutputStream());
                     DataInputStream in = new DataInputStream(socksSocket.getInputStream());
 
-                    // 1. SOCKS5 Handshake
-                    out.write(new byte[]{0x05, 0x01, 0x00}); // Version 5, 1 Method, No Auth
+                    out.write(new byte[]{0x05, 0x01, 0x00});
                     byte[] authResp = new byte[2];
                     in.readFully(authResp);
                     if (authResp[0] != 0x05 || authResp[1] != 0x00) {
@@ -284,15 +293,13 @@ public class DnsttVpnService extends VpnService {
                         return;
                     }
 
-                    // 2. Connect Command (to 8.8.8.8:53 or whatever user configured)
-                    // We hardcode 8.8.8.8 for the tunnel exit to ensure resolution works
                     byte[] ipBytes = InetAddress.getByName(dnsServer).getAddress();
-                    out.write(0x05); // Ver
-                    out.write(0x01); // Connect
-                    out.write(0x00); // Rsv
-                    out.write(0x01); // IPv4
+                    out.write(0x05);
+                    out.write(0x01);
+                    out.write(0x00);
+                    out.write(0x01);
                     out.write(ipBytes);
-                    out.writeShort(53); // Port
+                    out.writeShort(53);
 
                     byte[] connResp = new byte[10];
                     in.readFully(connResp);
@@ -301,16 +308,13 @@ public class DnsttVpnService extends VpnService {
                         return;
                     }
 
-                    // 3. Send DNS Query (TCP format: 2-byte length prefix + UDP payload)
                     out.writeShort(udpHeader.payload.length);
                     out.write(udpHeader.payload);
 
-                    // 4. Read Response
                     int respLen = in.readUnsignedShort();
                     byte[] dnsResponse = new byte[respLen];
                     in.readFully(dnsResponse);
 
-                    // 5. Send back to App via VPN
                     PacketHeaders.UDPHeader respUdp = new PacketHeaders.UDPHeader();
                     respUdp.sourcePort = 53;
                     respUdp.destinationPort = udpHeader.sourcePort;
@@ -336,9 +340,15 @@ public class DnsttVpnService extends VpnService {
                 } catch (Exception e) {
                     Log.e(TAG, "DNS over SOCKS failed: " + e.getMessage());
                 }
-            }).start();
+            });
         }
-        // Non-DNS UDP traffic is currently dropped (DNSTT limitation)
+    }
+
+    @Override
+    public void onRevoke() {
+        Log.i(TAG, "VPN permission revoked by OS");
+        stopVpn();
+        super.onRevoke();
     }
 
     private void stopVpn() {
@@ -346,13 +356,20 @@ public class DnsttVpnService extends VpnService {
         sendStatus(false);
         sendLog("VPN Service Stopped");
 
-        // Cleanup connections
+        if (connectionCleaner != null) {
+            connectionCleaner.cancel();
+            connectionCleaner = null;
+        }
+        if (dnsThreadPool != null) {
+            dnsThreadPool.shutdownNow();
+            dnsThreadPool = null;
+        }
+
         for (TcpConnection conn : tcpConnections.values()) {
             conn.close();
         }
         tcpConnections.clear();
 
-        // Kill binary
         if (proxyProcess != null) {
             proxyProcess.destroy();
             proxyProcess = null;
@@ -365,8 +382,6 @@ public class DnsttVpnService extends VpnService {
         stopForeground(true);
         stopSelf();
     }
-
-    // --- Helpers ---
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
