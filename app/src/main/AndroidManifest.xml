@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
@@ -21,14 +22,11 @@
         </activity>
 
         <service
-            android:name=".ProxyService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-        <service
             android:name=".DnsttVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false"
-            android:foregroundServiceType="dataSync"> <intent-filter>
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
                 <action android:name="android.net.VpnService"/>
             </intent-filter>
         </service>

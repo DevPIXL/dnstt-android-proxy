@@ -4,10 +4,12 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context; // [ADDED]
 import android.content.Intent;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.os.PowerManager; // [ADDED]
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -49,6 +51,9 @@ public class DnsttVpnService extends VpnService {
     private ParcelFileDescriptor vpnInterface;
     private Process proxyProcess;
 
+    // [FIX] WakeLock to prevent Doze mode disconnects
+    private PowerManager.WakeLock wakeLock;
+
     private ExecutorService dnsThreadPool;
     private Timer connectionCleaner;
 
@@ -80,6 +85,13 @@ public class DnsttVpnService extends VpnService {
     private void startVpn(String domain, String pubKey, String dnsString) {
         if (isRunning.get()) return;
         isRunning.set(true);
+
+        // [FIX] Acquire WakeLock
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DnsttVpn:KeepAlive");
+            wakeLock.acquire();
+        }
 
         dnsThreadPool = Executors.newFixedThreadPool(50);
 
@@ -168,7 +180,6 @@ public class DnsttVpnService extends VpnService {
             fos.write(pubKey.getBytes());
         }
 
-        // [REVERTED] Use nativeLibraryDir directly as it works on your device (Android 16)
         String binaryPath = getApplicationInfo().nativeLibraryDir + "/libdnstt.so";
         File binary = new File(binaryPath);
 
@@ -176,7 +187,6 @@ public class DnsttVpnService extends VpnService {
             throw new IOException("Binary not found at " + binaryPath);
         }
 
-        // Ensure executable permission is set (OS usually handles this for native libs)
         binary.setExecutable(true);
 
         String[] cmd = {
@@ -355,6 +365,12 @@ public class DnsttVpnService extends VpnService {
         isRunning.set(false);
         sendStatus(false);
         sendLog("VPN Service Stopped");
+
+        // [FIX] Release WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            wakeLock = null;
+        }
 
         if (connectionCleaner != null) {
             connectionCleaner.cancel();
