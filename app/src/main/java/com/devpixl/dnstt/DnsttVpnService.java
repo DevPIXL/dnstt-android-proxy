@@ -6,7 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ServiceInfo; // [FIX] Added import
+import android.content.pm.ServiceInfo;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
@@ -43,6 +43,8 @@ public class DnsttVpnService extends VpnService {
     private static final int NOTIFICATION_ID = 1;
 
     public static boolean isServiceRunning = false;
+    // [FIX] Added static log buffer so MainActivity can read history
+    public static StringBuilder logBuffer = new StringBuilder();
 
     // Config
     private String proxyHost = "127.0.0.1";
@@ -88,6 +90,9 @@ public class DnsttVpnService extends VpnService {
         isRunning.set(true);
         isServiceRunning = true;
 
+        // [FIX] Clear old logs on new run
+        logBuffer.setLength(0);
+
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DnsttVpn:KeepAlive");
@@ -106,7 +111,6 @@ public class DnsttVpnService extends VpnService {
 
         createNotificationChannel();
 
-        // [FIX] Provide ServiceType for Android 14 compliance
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, createNotification("Starting Tunnel..."),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
@@ -193,6 +197,7 @@ public class DnsttVpnService extends VpnService {
             throw new IOException("Binary not found at " + binaryPath);
         }
 
+        // System usually handles permissions for nativeLibraryDir, but we set it just in case
         binary.setExecutable(true);
 
         String[] cmd = {
@@ -271,10 +276,8 @@ public class DnsttVpnService extends VpnService {
                 vpnOutput, socksClient
             );
 
-            // [FIX] Register connection immediately to avoid race conditions or duplicates
             tcpConnections.put(connectionId, connection);
 
-            // [FIX] Execute the blocking handshake in the thread pool to avoid freezing the VPN loop
             dnsThreadPool.execute(() -> {
                 if (!connection.handleSyn(tcpHeader.sequenceNumber)) {
                     connection.close();
@@ -444,6 +447,10 @@ public class DnsttVpnService extends VpnService {
 
     private void sendLog(String message) {
         Log.d(TAG, message);
+        // [FIX] Append to static buffer
+        if (logBuffer.length() > 5000) logBuffer.setLength(0);
+        logBuffer.append(message).append("\n");
+
         Intent intent = new Intent("com.devpixl.dnstt.LOG_UPDATE");
         intent.putExtra("log", message);
         sendBroadcast(intent);

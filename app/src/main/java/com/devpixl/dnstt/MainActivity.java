@@ -9,7 +9,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.VpnService;
@@ -621,15 +620,17 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
 
-        // [FIX] Sync UI with Service State on Resume
+        // [FIX] Use DnsttVpnService instead of ProxyService
         if (DnsttVpnService.isServiceRunning) {
             if (statusView.getText().equals("Disconnected")) {
-                updateUIState("Testing..."); // Or a generic "Connected" until logs arrive
+                updateUIState("Testing...");
             }
         } else {
             updateUIState("Disconnected");
         }
 
+        // [FIX] Use DnsttVpnService log buffer
+        logView.setText("Logs:\n" + DnsttVpnService.logBuffer.toString());
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
 
