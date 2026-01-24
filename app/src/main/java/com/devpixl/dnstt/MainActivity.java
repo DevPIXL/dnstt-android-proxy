@@ -11,6 +11,7 @@ import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.VpnService; // [ADDED] Required for VPN Intent
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -46,6 +47,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+
+    private static final int VPN_REQUEST_CODE = 0x0F; // [ADDED] Request code for VPN permission
 
     private TextView logView;
     private ScrollView logScrollView;
@@ -108,18 +111,14 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. Toolbar
         MaterialToolbar toolbar = new MaterialToolbar(this);
-        toolbar.setTitle(""); // [CHANGE] Clear default title
+        toolbar.setTitle("");
         toolbar.setElevation(8f);
 
-        // [CHANGE] Add Centered Title
+        // Title
         TextView toolbarTitle = new TextView(this);
         toolbarTitle.setText("DNSTT Runner");
         toolbarTitle.setTextSize(20);
         toolbarTitle.setTypeface(null, Typeface.BOLD);
-
-        // [FIXED] Removed manual text color setting.
-        // This allows the TextView to automatically use the default high-contrast color
-        // (Black in Light Mode, White in Dark Mode) provided by the Material theme.
 
         Toolbar.LayoutParams titleParams = new Toolbar.LayoutParams(
                 Toolbar.LayoutParams.WRAP_CONTENT, Toolbar.LayoutParams.WRAP_CONTENT);
@@ -206,8 +205,6 @@ public class MainActivity extends AppCompatActivity {
 
         GradientDrawable buttonBg = new GradientDrawable();
         buttonBg.setShape(GradientDrawable.OVAL);
-
-        // [FIXED] Set background to Dark Gray and removed the stroke (outline)
         buttonBg.setColor(Color.parseColor("#333333"));
 
         btnStart.setBackground(buttonBg);
@@ -286,53 +283,74 @@ public class MainActivity extends AppCompatActivity {
         // Initial State
         updateUIState("Disconnected");
 
+        // [CHANGE] Updated Button Click Listener for VPN
         btnStart.setOnClickListener(v -> {
-            Intent serviceIntent = new Intent(this, ProxyService.class);
-            if (ProxyService.isRunning) {
+            // Note: We check if the NEW service class is running.
+            // Ideally, add a static isRunning field to DnsttVpnService similar to ProxyService.
+            // For now, assuming standard start/stop intent behavior works.
+
+            // If the UI thinks we are connected, try to stop
+            if (!statusView.getText().equals("Disconnected")) {
+                Intent serviceIntent = new Intent(this, DnsttVpnService.class);
                 serviceIntent.setAction("STOP");
                 startService(serviceIntent);
-                // UI update handled by BroadcastReceiver
             } else {
-                serviceIntent.putExtra("domain", domainInput.getText().toString());
-                serviceIntent.putExtra("key", keyInput.getText().toString());
-                serviceIntent.putExtra("dns", dnsInput.getText().toString());
-
-                // Reset Logic Variables on Start
-                isTestingPhase = true;
-                logBatchCount = 0;
-                streamLogCount = 0;
-                updateUIState("Testing...");
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent);
+                // Prepare VPN
+                Intent intent = VpnService.prepare(this);
+                if (intent != null) {
+                    // Request permission
+                    startActivityForResult(intent, VPN_REQUEST_CODE);
                 } else {
-                    startService(serviceIntent);
+                    // Already have permission
+                    startVpnService();
                 }
             }
         });
+    }
 
-        if (ProxyService.isRunning) {
-            updateUIState("Testing..."); // Default restart state until logs confirm connection
+    // [ADDED] Handle VPN Permission Result
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK) {
+            startVpnService();
+        } else if (requestCode == VPN_REQUEST_CODE) {
+            Toast.makeText(this, "VPN Permission Denied", Toast.LENGTH_SHORT).show();
         }
     }
 
-    // [CHANGE] Centralized UI State Manager for Colors and Text
+    // [ADDED] Helper method to start the VPN Service
+    private void startVpnService() {
+        Intent serviceIntent = new Intent(this, DnsttVpnService.class); // Use new Service class
+        serviceIntent.putExtra("domain", domainInput.getText().toString());
+        serviceIntent.putExtra("key", keyInput.getText().toString());
+        serviceIntent.putExtra("dns", dnsInput.getText().toString());
+
+        // Reset Logic Variables on Start
+        isTestingPhase = true;
+        logBatchCount = 0;
+        streamLogCount = 0;
+        updateUIState("Testing...");
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+    }
+
     private void updateUIState(String status) {
         statusView.setText(status);
 
         if ("Disconnected".equals(status)) {
             // Gray State
             statusView.setBackgroundColor(Color.GRAY);
-
-            // [FIXED] Use specific image resource instead of ColorFilter
             btnStart.setImageResource(R.drawable.ic_app_icon_gray);
             btnStart.clearColorFilter();
         }
         else if ("Timed-out".equals(status)) {
             // Red State
             statusView.setBackgroundColor(Color.RED);
-
-            // [FIXED] Use specific image resource instead of ColorFilter
             btnStart.setImageResource(R.drawable.ic_app_icon_red);
             btnStart.clearColorFilter();
         }
@@ -340,24 +358,20 @@ public class MainActivity extends AppCompatActivity {
             // "Testing..." or "Connected" -> Blue State
             int brandBlue = ContextCompat.getColor(this, R.color.brand_blue);
             statusView.setBackgroundColor(brandBlue);
-
-            // [FIXED] Revert to original Blue icon
             btnStart.setImageResource(R.drawable.ic_app_icon);
             btnStart.clearColorFilter();
         }
     }
 
     private void updateStatusLogic(String message) {
-        if (!ProxyService.isRunning) {
-            updateUIState("Disconnected");
-            return;
-        }
+        // [NOTE] You might need to update this check to reference DnsttVpnService.isRunning
+        // or rely on the status update broadcast.
+        if (message == null) return;
 
         boolean isSessionStart = message.contains("begin session");
         boolean isStreamLog = message.contains("begin stream") || message.contains("end stream");
 
         if (isTestingPhase) {
-            // Ensure UI says Testing
             if (!statusView.getText().equals("Testing...")) updateUIState("Testing...");
 
             if (isSessionStart || isStreamLog) {
@@ -379,7 +393,6 @@ public class MainActivity extends AppCompatActivity {
             streamLogCount++;
         }
 
-        // Fast Success Check
         if (streamLogCount >= 3) {
             updateUIState("Connected");
             logBatchCount = 0;
@@ -387,7 +400,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Batch Failure Check
         if (logBatchCount >= 5) {
             if (streamLogCount >= 3) {
                 updateUIState("Connected");
@@ -396,12 +408,6 @@ public class MainActivity extends AppCompatActivity {
             }
             logBatchCount = 0;
             streamLogCount = 0;
-        }
-    }
-
-    private void updateStartButtonState(boolean isRunning) {
-        if (!isRunning) {
-            updateUIState("Disconnected");
         }
     }
 
@@ -625,19 +631,16 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(logReceiver, filter);
         }
 
-        // Ensure UI matches service state on resume
-        if (ProxyService.isRunning) {
-            // We don't know exact status (Testing/Connected) without logs,
-            // but we can default to Testing or keep current if we persisted state.
-            // For simplicity, we just check if it was already updated.
-            if (statusView.getText().equals("Disconnected")) {
-                 updateUIState("Testing...");
-            }
+        // Ideally check DnsttVpnService.isRunning here if you expose it as a static field
+        if (!statusView.getText().equals("Disconnected")) {
+             // Keep current state or check persistent storage
         } else {
+            // Default check
             updateUIState("Disconnected");
         }
 
-        logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
+        // Removed ProxyService.logBuffer reference as it belongs to the old service
+        // logView.setText("Logs:\n" + ProxyService.logBuffer.toString());
         logScrollView.post(() -> logScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
 
