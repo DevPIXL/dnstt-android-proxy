@@ -8,7 +8,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.PorterDuff; // [NEW] Needed for button tinting
+import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -31,7 +31,7 @@ import android.widget.Toast;
 import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar; // [NEW] Needed for layout params
+import androidx.appcompat.widget.Toolbar;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.core.content.ContextCompat;
 
@@ -116,10 +116,10 @@ public class MainActivity extends AppCompatActivity {
         toolbarTitle.setText("DNSTT Runner");
         toolbarTitle.setTextSize(20);
         toolbarTitle.setTypeface(null, Typeface.BOLD);
-        // Use standard title appearance or default color (usually suitable for toolbar)
-        TypedValue titleColor = new TypedValue();
-        getTheme().resolveAttribute(android.R.attr.textColorPrimary, titleColor, true);
-        toolbarTitle.setTextColor(titleColor.data);
+
+        // [FIXED] Removed manual text color setting.
+        // This allows the TextView to automatically use the default high-contrast color
+        // (Black in Light Mode, White in Dark Mode) provided by the Material theme.
 
         Toolbar.LayoutParams titleParams = new Toolbar.LayoutParams(
                 Toolbar.LayoutParams.WRAP_CONTENT, Toolbar.LayoutParams.WRAP_CONTENT);
@@ -206,13 +206,9 @@ public class MainActivity extends AppCompatActivity {
 
         GradientDrawable buttonBg = new GradientDrawable();
         buttonBg.setShape(GradientDrawable.OVAL);
-        buttonBg.setColor(Color.TRANSPARENT);
 
-        TypedValue bgTypedValue = new TypedValue();
-        getTheme().resolveAttribute(android.R.attr.colorBackground, bgTypedValue, true);
-        int backgroundColor = bgTypedValue.data;
-
-        buttonBg.setStroke(20, backgroundColor);
+        // [FIXED] Set background to Dark Gray and removed the stroke (outline)
+        buttonBg.setColor(Color.parseColor("#333333"));
 
         btnStart.setBackground(buttonBg);
         btnStart.setPadding(20, 20, 20, 20);
@@ -327,18 +323,26 @@ public class MainActivity extends AppCompatActivity {
         if ("Disconnected".equals(status)) {
             // Gray State
             statusView.setBackgroundColor(Color.GRAY);
-            btnStart.setColorFilter(Color.GRAY, PorterDuff.Mode.SRC_IN);
+
+            // [FIXED] Use specific image resource instead of ColorFilter
+            btnStart.setImageResource(R.drawable.ic_app_icon_gray);
+            btnStart.clearColorFilter();
         }
         else if ("Timed-out".equals(status)) {
             // Red State
             statusView.setBackgroundColor(Color.RED);
-            btnStart.setColorFilter(Color.RED, PorterDuff.Mode.SRC_IN);
+
+            // [FIXED] Use specific image resource instead of ColorFilter
+            btnStart.setImageResource(R.drawable.ic_app_icon_red);
+            btnStart.clearColorFilter();
         }
         else {
             // "Testing..." or "Connected" -> Blue State
             int brandBlue = ContextCompat.getColor(this, R.color.brand_blue);
             statusView.setBackgroundColor(brandBlue);
-            // Clear filter to show original Blue icon
+
+            // [FIXED] Revert to original Blue icon
+            btnStart.setImageResource(R.drawable.ic_app_icon);
             btnStart.clearColorFilter();
         }
     }
